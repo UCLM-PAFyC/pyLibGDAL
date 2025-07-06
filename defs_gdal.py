@@ -3,6 +3,9 @@
 
 from osgeo import ogr
 
+GDAL_TAG_RASTER = 'DCAP_RASTER'
+GDAL_TAG_VECTOR = 'DCAP_VECTOR'
+
 LAYERS_FIELDS_TAG = 'fields'
 LAYERS_GEOMETRY_TAG = 'geometry'
 LAYERS_GEOMETRY_TYPE_TAG = 'geometry_type'
