@@ -63,7 +63,7 @@ class GpkgTools(object):
                 if ignore_existing_layers:
                     continue
                 else:
-                    # to do, remove?
+                    # to do, remove_features?
                     yo = 1
             outLayer = None
             geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG]
@@ -313,7 +313,7 @@ class GpkgTools(object):
                     filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
                     if filter_field_idx == -1:
                         str_error = ('No filter field: {} in layer: {}\nin file: {}'.
-                                     format(filter_name, layer_name, file_name))
+                                     format(filter_field_name, layer_name, file_name))
                         return str_error
                     if not defs_gdal.FIELD_TYPE_TAG in filter_field:
                         str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
