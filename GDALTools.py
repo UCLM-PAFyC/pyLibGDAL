@@ -4,7 +4,6 @@
 import os, sys
 from osgeo import gdal, osr, ogr
 
-
 current_path = os.path.dirname(__file__)
 sys.path.append(os.path.join(current_path, '..'))
 
@@ -358,6 +357,47 @@ class GDALTools(object):
         return str_error, field_names
 
     @classmethod
+    def get_layer_geometry_type(self, file_path, layer_name):
+        str_error = ''
+        geometry_type = None
+        if not isinstance(file_path, str):
+            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+            return str_error, geometry_type
+        if not self.is_initialized:
+            str_error = self.initialize()
+            if str_error:
+                return str_error, geometry_type
+        if not os.path.exists(file_path):
+            str_error = ('Not exists file:\n{}'.format(file_path))
+            return str_error, geometry_type
+        str_error, is_vector = self.is_vector(file_path)
+        if str_error:
+            return str_error, geometry_type
+        if not is_vector:
+            str_error = ('File is not a vector data source:\n{}'.format(file_path))
+            return str_error, geometry_type
+        ds = None
+        try:
+            ds = ogr.Open(file_path)
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+            return str_error, geometry_type
+        layer = None
+        try:
+            layer = ds.GetLayer(layer_name)
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+            return str_error, geometry_type
+        if not layer:
+            str_error = ('Not exists layer: {}\nin file:\n{}'.format(layer_name, file_path))
+            return str_error, geometry_type
+        try:
+            geometry_type = layer.GetGeomType()
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+        return str_error, geometry_type
+
+    @classmethod
     def get_layers_names(self, file_path):
         str_error = ''
         if not isinstance(file_path, str):
@@ -380,7 +420,7 @@ class GDALTools(object):
         try:
             layer_names = [l.GetName() for l in ogr.Open(file_path)]
         except Exception as e:
-            str_error = 'GDAL Error: ' + gdal.GetLastErrorMsg()
+            str_error = 'GDAL Error: ' + e.args[0]
         return str_error, layer_names
 
     @classmethod
