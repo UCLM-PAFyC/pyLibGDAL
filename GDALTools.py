@@ -149,7 +149,7 @@ class GDALTools(object):
         return str_error
 
     @classmethod
-    def gdalinfo_as_text(self, file_path): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
+    def gdalinfo_as_json(self, file_path): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
         str_error = ''
         info_as_json = ''
         if not isinstance(file_path, str):
@@ -167,7 +167,6 @@ class GDALTools(object):
             str_error = self.initialize()
             if str_error:
                 return str_error, info_as_json
-
         command = ("gdalinfo -json \"{}\"".format(file_path))
         try:
             res = subprocess.Popen(command,
@@ -467,7 +466,7 @@ class GDALTools(object):
         return str_error, layer_names
 
     @classmethod
-    def get_metadata(self, file_path):
+    def get_metadata(self, file_path, layer_name = None):
         str_error = ''
         info_as_text = ''
         if not isinstance(file_path, str):
@@ -481,7 +480,7 @@ class GDALTools(object):
         if str_error:
             return str_error, info_as_text
         if is_raster:
-            str_error, info_as_text = self.gdalinfo_as_text(file_path)
+            str_error, info_as_text = self.gdalinfo_as_json(file_path)
             # try:
             #     alg = gdal.Run("raster", "info", input = file_path) # gdal 3.11
             #     info_as_dict = alg.Output()
@@ -489,7 +488,7 @@ class GDALTools(object):
             #     # str_error = 'GDAL Error: ' + e.args[0]
             #     str_error, info_as_dict = self.gdalinfo_as_text(file_path)
         else:
-            str_error, info_as_text = self.ogrinfo_as_text(file_path)
+            str_error, info_as_text = self.ogrinfo_as_json(file_path, layer_name)
             # try:
             #     alg = gdal.Run("vector", "info", input = file_path) # gdal 3.11?
             #     info_as_dict = alg.Output()
@@ -558,57 +557,46 @@ class GDALTools(object):
         return str_error
 
     @classmethod
-    def ogrinfo_as_text(self, file_path): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
+    def ogrinfo_as_json(self, file_path, layer_name = None): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
         str_error = ''
-        info_as_text = ''
+        info_as_json = ''
         if not isinstance(file_path, str):
             str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
             return str_error
         if not self.is_initialized:
             str_error = self.initialize()
             if str_error:
-                return str_error, info_as_text
-
-        command = ("ogrinfo.exe -so -al \"{}\"".format(file_path))
-        info_as_text, error = subprocess.Popen(command,
-                                         universal_newlines=True,
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE
-                                         ).communicate()
-        yo = 1
-        # ds = None
-        # try:
-        #     ds = gdal.Open(file_path)
-        # except Exception as e:
-        #     str_error = 'GDAL Error: ' + e.args[0]
-        #     return str_error, info_as_text
-        # if not ds:
-        #     str_error = ("Failed to open the dataset!")
-        #     return str_error, info_as_text
-        # # Basic information
-        # info_as_text += (f"Driver: {ds.GetDriver().ShortName}/{ds.GetDriver().LongName}")
-        # info_as_text += (f"\nSize is {ds.RasterXSize} x {ds.RasterYSize} x {ds.RasterCount}")
-        # # Georeferencing information
-        # geotransform = ds.GetGeoTransform()
-        # if geotransform:
-        #     info_as_text += (f"\nOrigin = ({geotransform[0]}, {geotransform[3]})")
-        #     info_as_text += (f"\nPixel Size = ({geotransform[1]}, {geotransform[5]})")
-        # # Projection information
-        # projection = ds.GetProjection()
-        # if projection:
-        #     info_as_text += (f"\nProjection is: {projection}")
-        # # Raster bands information
-        # for i in range(1, ds.RasterCount + 1):
-        #     band = ds.GetRasterBand(i)
-        #     info_as_text += (f"\nBand {i} Type={gdal.GetDataTypeName(band.DataType)}")
-        #     min_val, max_val, _, _ = band.GetStatistics(True, True)
-        #     info_as_text += (f"\nMin={min_val:.3f}, Max={max_val:.3f}")
-        #     if band.GetOverviewCount() > 0:
-        #         info_as_text += (f"\nOverviews: {band.GetOverviewCount()}")
-        #     if band.GetRasterColorTable():
-        #         info_as_text += (f"\nColor Table Found!")
-        ds = None  # Close the dataset
-        return str_error, info_as_text
+                return str_error, info_as_json
+        str_error = ''
+        if not isinstance(file_path, str):
+            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+            return str_error, info_as_json
+        if not self.is_initialized:
+            str_error = self.initialize()
+            if str_error:
+                return str_error, info_as_json
+        command = ("ogrinfo -so -json \"{}\"".format(file_path))
+        if layer_name:
+            command = ("ogrinfo -so -json \"{}\" \"{}\"".format(file_path, layer_name))
+        try:
+            res = subprocess.Popen(command,
+                                   universal_newlines=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+            info_as_json, error = res.communicate()
+            if error:
+                str_error = ('In command:\{}\nError:\n{}'.format(command, error.strip()))
+                return str_error, info_as_json
+        # except CalledProcessError as e:
+        #   print "CalledError > ",e.returncode
+        #   print "CalledError > ",e.output
+        except OSError as e:
+            str_error = ('In command:\{}\nError:\n{}\n{}\n{}'.format(command, e.errno, e.strerror, e.filename))
+            return str_error, info_as_json
+        except:
+            str_error = ('In command:\{}\nError:\n{}'.format(command, sys.exc_info()[0]))
+            return str_error, info_as_json
+        return str_error, info_as_json
 
     @classmethod
     def remove_features(self,
