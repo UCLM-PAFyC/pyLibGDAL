@@ -149,6 +149,16 @@ class GDALTools(object):
         return str_error
 
     @classmethod
+    def exists_layer(self, file_path, layer_name):
+        str_error = ''
+        exists_layer = False
+        str_error, layer_names = self.get_layers_names(file_path)
+        if not str_error:
+            if layer_name in layer_names:
+                exists_layer = True
+        return str_error, exists_layer
+
+    @classmethod
     def gdalinfo_as_json(self, file_path): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
         str_error = ''
         info_as_json = ''
