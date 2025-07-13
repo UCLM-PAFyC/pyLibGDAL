@@ -326,7 +326,8 @@ class GDALTools(object):
             for field_name in fields:
                 field_type = fields[field_name]
                 if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
-                    feature_fields[field_name] = feature.GetGeometryRef().ExportToWkb()
+                    if field_type != defs_gdal.geometry_type_by_name['none']:
+                        feature_fields[field_name] = feature.GetGeometryRef().ExportToWkb()
                     continue
                 field_idx = layer.GetLayerDefn().GetFieldIndex(field_name)
                 value = None
