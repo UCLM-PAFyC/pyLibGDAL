@@ -82,7 +82,6 @@ class GDALTools(object):
         str_error, driver_names = self.get_driver_name_from_file(file_path)
         if str_error:
             return str_error
-        # driver = ogr.GetDriverByName("GPKG")
         ds = None
         for i in range(len(driver_names)):
             driver_name = driver_names[i]
@@ -638,11 +637,9 @@ class GDALTools(object):
             if not isinstance(features_filter_fields_by_layer[layer_name], list):
                 str_error = ('Features filters by layer argument must be a dictionary of lists')
                 return str_error
-        # driver = ogr.GetDriverByName("GPKG")
         ds = None
         try:
             ds = ogr.Open(file_path, update = 1)
-            # ds = driver.Open(file_path, update = 1)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error
@@ -761,11 +758,9 @@ class GDALTools(object):
             if not isinstance(features_filter_fields_by_layer[layer_name], list):
                 str_error = ('Features filters by layer argument must be a dictionary of lists')
                 return str_error
-        # driver = ogr.GetDriverByName("GPKG")
         ds = None
         try:
             ds = ogr.Open(file_path, update = 1)
-            # ds = driver.Open(file_path, update = 1)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error
@@ -939,10 +934,8 @@ class GDALTools(object):
             if not isinstance(features_by_layer[layer_name], list):
                 str_error = ('Features by layer argument must be a dictionary of lists')
                 return str_error
-        # driver = ogr.GetDriverByName("GPKG")
         ds = None
         try:
-            # ds = driver.Open(file_path, update = 1)
             ds = ogr.Open(file_path, update = 1)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]

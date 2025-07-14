@@ -82,13 +82,4 @@ geometry_type_by_name['multipoint_25d'] = ogr.wkbMultiPoint25D
 geometry_name_by_type[ogr.wkbMultiPoint25D] = 'multipoint_25d'
 geometry_type_by_name['multilinestring_25d'] = ogr.wkbMultiLineString25D
 geometry_name_by_type[ogr.wkbMultiLineString25D] = 'multilinestring_25d'
-#
-# geometry_type_by_name[''] = ogr.
-# geometry_name_by_type[ogr.] = ''
-#
-# geometry_type_by_name[''] = ogr.
-# geometry_name_by_type[ogr.] = ''
-#
-# geometry_type_by_name[''] = ogr.
-# geometry_name_by_type[ogr.] = ''
 
