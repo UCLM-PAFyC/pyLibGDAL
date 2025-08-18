@@ -1,7 +1,7 @@
 # authors:
 # David Hernandez Lopez, david.hernandez@uclm.es
 
-from osgeo import ogr
+from osgeo import ogr, gdal
 
 GDAL_TAG_RASTER = 'DCAP_RASTER'
 GDAL_TAG_VECTOR = 'DCAP_VECTOR'
@@ -83,3 +83,17 @@ geometry_name_by_type[ogr.wkbMultiPoint25D] = 'multipoint_25d'
 geometry_type_by_name['multilinestring_25d'] = ogr.wkbMultiLineString25D
 geometry_name_by_type[ogr.wkbMultiLineString25D] = 'multilinestring_25d'
 
+RASTER_FULL_PRECISION_CODE = -1
+# GDAL Raster Data Types
+# Unknown or unspecified type gdalconst.GDT_Unknown 0
+# 8-bit inconsistent integers gdalconst.GDT_Byte 1
+# 16-bit inconsistent integers gdalconst.GDT_UInt16 2
+# 16 bit integer gdalconst.GDT_Int16 3
+# 32-bit inconsistent integers gdalconst.GDT_UInt32 4
+# 32-bit integer value gdalconst.GDT_Int32 5
+# 32-bit floating-point type gdalconst.GDT_Float32 6
+# 64-bit floating-point type gdalconst.GDT_Float64 7
+# 16-bit Complex integer gdalconst.GDT_CInt16 8
+# 32-bit Complex integer gdalconst.GDT_CInt32 9
+# 32-bit complex floating-point type gdalconst.GDT_CFloat32 10
+# 64-bit complex floating-point type gdalconst.GDT_CFloat64 11

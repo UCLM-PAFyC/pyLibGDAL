@@ -1,0 +1,27 @@
+IN, no nodatavalue in cubic
+POINT(591558.375 4345191.903)
+cs2cs EPSG:25830 EPSG:4258 -f "%.9f"
+POINT(-1.938892915 39.251220854)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.375 4345191.903 -l_srs EPSG:25830 -r nearest -valonly
+-> 723.720642089844 == 723.721 (QGIS)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif -1.938892915 39.251220854 -l_srs EPSG:4258 -r nearest -valonly
+-> 723.720642089844 == 723.721 (QGIS)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.375 4345191.903 -l_srs EPSG:25830 -r cubic -valonly
+-> 723.720231672477
+
+IN, yes nodatavalue in cubic
+POINT(591558.182 4345192.034)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.182 4345192.034 -l_srs EPSG:25830 -r nearest -valonly
+-> 723.7177734375 == 723.718 (QGIS)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.182 4345192.034 -l_srs EPSG:25830 -r cubic -valonly
+-> 723.717716647855
+
+OUT, yes values in cubic
+POINT(591558.106 4345192.155)
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.106 4345192.155 -l_srs EPSG:25830 -r nearest -valonly
+-> empty, no devuelve nada
+gdallocationinfo D:\qPAFyCToolsProjects\tarazona\input\CGDM_MS\DSM-303-RFL-Tarazona_Vid_20230804_25830_3.5cm.tif 591558.106 4345192.155 -l_srs EPSG:25830 -r cubic -valonly
+-> empty, no devuelve nada
+
+-> Tiene que haber valor en el píxel en cuestión
+
