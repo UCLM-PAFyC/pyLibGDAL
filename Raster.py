@@ -4,7 +4,8 @@
 import os, sys
 from osgeo import gdal, osr, ogr
 import json
-from numpy import *
+import numpy as np
+import psutil
 
 import subprocess
 
@@ -17,6 +18,7 @@ from pyLibCRSs.CRSsTools import CRSsTools
 from .GDALTools import GDALTools
 
 gdal.UseExceptions()
+
 
 class GdalErrorHandler(object):
     def __init__(self):
@@ -44,6 +46,7 @@ class Raster:
         self.int_to_dbl = 1.0 / self.dbl_to_int
         self.crs = None
         self.crs_epsg_code = None
+        self.vertical_crs_epsg_code = None
         self.crs_id = None
         self.georef = None
         self.rows = None
@@ -69,10 +72,117 @@ class Raster:
         self.no_data_value_by_band = {}
         self.data_by_band = {}
         self.file_path = None
+        self.bicubic_coef_matrix = None
+
+    def bicubic_coefs(self, r, c, band_position):
+        str_error = ''
+        coefs = None
+        if not self.data_set:
+            str_error = ('Data set is not initialized')
+            return str_error, coefs
+        if r < 0 or r > (self.rows - 3):
+            str_error = ('Row: {} is out of domain [{}, {}]'.format(str(r), str(0), str(self.rows - 3)))
+            return str_error, coefs
+        if c < 0 or c > (self.columns - 3):
+            str_error = ('Column: {} is out of domain [{}, {}]'.format(str(c), str(0), str(self.columns - 3)))
+            return str_error, coefs
+        if not band_position in self.raster_by_band:
+            str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
+            return str_error, coefs
+        if not band_position in self.data_by_band:
+            str_error = ('Position: {} is not in raster data bands container'.format(str(band_position)))
+            return str_error, coefs
+        data = self.data_by_band[band_position]
+        x = np.zeros(16)
+        x[0] = data[r, c]
+        x[1] = data[r + 1, c]
+        x[2] = data[r, c + 1]
+        x[3] = data[r + 1, c + 1]
+        x[4] = (data[r + 1, c] - data[r - 1, c]) / 2.  # df/dx central diff
+        x[5] = (data[r + 2, c] - data[r, c]) / 2.  # df/dx central diff
+        x[6] = (data[r + 1, c + 1] - data[r - 1, c + 1]) / 2.  # df/dx central diff
+        x[7] = (data[r + 2, c + 1] - data[r, c + 1]) / 2.  # df/dx central diff
+        x[8] = (data[r, c + 1] - data[r, c - 1]) / 2.  # df/dy central diff
+        x[9] = (data[r + 1, c + 1] - data[r + 1, c - 1]) / 2.  # df/dy central diff
+        x[10] = (data[r, c + 2] - data[r, c]) / 2.  # df/dy central diff
+        x[11] = (data[r + 1, c + 2] - data[r + 1, c]) / 2.  # df/dy central diff
+        x[12] = (data[r + 1, c + 1] + data[r - 1, c - 1] - data[r + 1, c - 1] - data[
+            r - 1, c + 1]) / 2.  # d2f/(dxdy] central diff
+        x[13] = (data[r + 2, c + 1] + data[r, c - 1] - data[r + 2, c - 1] - data[r, c + 1]) / 2.
+        x[14] = (data[r + 1, c + 2] + data[r - 1, c] - data[r + 1, c] - data[r - 1, c + 2]) / 2.
+        x[15] = (data[r + 2, c + 2] + data[r, c] - data[r + 2, c] - data[r, c + 2]) / 2.
+        self.set_bicubic_coef_matrix()
+        alpha = self.bicubic_coef_matrix * x
+        coef = alpha.transpose()
+        return str_error, coef
+
+    def bilinear_coefs(self, r, c, band_position):
+        str_error = ''
+        coefs = None
+        if not self.data_set:
+            str_error = ('Data set is not initialized')
+            return str_error, coefs
+        if r < 0 or r > (self.rows - 2):
+            str_error = ('Row: {} is out of domain [{}, {}]'.format(str(r), str(0), str(self.rows - 2)))
+            return str_error, coefs
+        if c < 0 or c > (self.columns - 2):
+            str_error = ('Column: {} is out of domain [{}, {}]'.format(str(c), str(0), str(self.columns - 2)))
+            return str_error, coefs
+        if not band_position in self.raster_by_band:
+            str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
+            return str_error, coefs
+        if not band_position in self.data_by_band:
+            str_error = ('Position: {} is not in raster data bands container'.format(str(band_position)))
+            return str_error, coefs
+        data = self.data_by_band[band_position]
+        coefs = np.zeros((2,2))
+        coefs[0][0] = data[r][c]
+        coefs[1][0] = data[r + 1][c] - data[r][c]
+        coefs[0][1] = data[r][c + 1] - data[r][c]
+        coefs[1][1] = (data[r + 1][c + 1] + data[r][c]) - (data[r + 1][c] + data[r][c + 1])
+        return str_error, coefs
+
+    def load_(self,
+              fully = True,
+              bands = None):
+        str_error = ''
+        if not self.data_set:
+            str_error = ('Data set is not initialized')
+            return str_error
+        if bands:
+            if not isinstance(bands, list):
+                str_error = ('Argument bands must be a list and is a: {}'.format(str(type(bands))))
+                return str_error
+        else:
+            bands = []
+            for i in range(self.number_of_bands):
+                bands.append(i)
+        for j in range(len(bands)):
+            i = bands[j]
+            if not i in self.raster_by_band:
+                str_error = ('Position: {} is not in raster bands container'.format(str(i)))
+                return str_error
+            if not self.data_by_band[i]:
+                ram = psutil.virtual_memory()
+                available_ram_in_bytes = ram.available
+                bytes_by_pixel = None
+                if self.gdal_data_type_by_band[i] in defs_gdal.gdal_bytes_by_type:
+                    bytes_by_pixel = defs_gdal.gdal_bytes_by_type[self.gdal_data_type_by_band[i]]
+                else:
+                    str_error = ('Invalid data type for band position: {}'.format(str(i)))
+                    return str_error
+                needed_memory_in_bytes = self.columns * self.rows * bytes_by_pixel
+                if needed_memory_in_bytes > (available_ram_in_bytes * defs_gdal.MAX_PERCENTAGE_AVAILABLE_RAM_TO_USE / 100.):
+                    str_error = ('There are no enough available RAM to load band position: {}'.format(str(i)))
+                    return str_error
+                try:
+                    self.data_by_band[i] = self.raster_by_band[i].ReadAsArray()  # in original data type
+                except Exception as e:
+                    str_error = 'GDAL Error: ' + e.args[0]
+        return str_error
 
     def set_from_file(self,
-                      file_path,
-                      load_data = False):
+                      file_path):
         str_error = ''
         if not isinstance(file_path, str):
             str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
@@ -94,6 +204,7 @@ class Raster:
         self.rows = self.data_set.RasterYSize
         self.crs = None
         self.crs_epsg_code = None
+        self.vertical_crs_epsg_code = None
         self.crs_id = None
         self.crs = self.data_set.GetSpatialRef()
         srs_unit = ""
@@ -102,23 +213,25 @@ class Raster:
             srs_as_wkt = self.crs.ExportToPrettyWkt()
             is_compound = self.crs.IsCompound()
             if is_compound:
-                str_error, epsg_code, vertical_epsg_code = self.crs_tools.get_compound_epgs_codes_from_json(srs_as_projjson)
+                str_error, self.crs_id, self.crs_epsg_code, self.vertical_crs_epsg_code =(
+                    self.crs_tools.get_compound_crs_from_json(srs_as_projjson))
                 if str_error:
                     return str_error
-            # print("SRS:")
-            # srs_type = srs_as_projjson["type"]
-            # print(f"  Type: {srs_type}")
-            # name = srs_as_projjson["name"]
-            # print(f"  Name: {name}")
-            if "id" in srs_as_projjson:
-                id = srs_as_projjson["id"]
-                authority = id["authority"]
-                code = id["code"]
-                if authority.casefold() == 'EPSG'.casefold():
-                    self.crs_id = ("{}:{}".format(authority, str(code)))
-                    self.crs_epsg_code = code
-                # print(f"  Id: {authority}:{code}")
-            # srs_unit = " " + srs_as_projjson["coordinate_system"]["axis"][0]["unit"]
+            else:
+                # print("SRS:")
+                # srs_type = srs_as_projjson["type"]
+                # print(f"  Type: {srs_type}")
+                # name = srs_as_projjson["name"]
+                # print(f"  Name: {name}")
+                if "id" in srs_as_projjson:
+                    id = srs_as_projjson["id"]
+                    authority = id["authority"]
+                    code = id["code"]
+                    if authority.casefold() == 'EPSG'.casefold():
+                        self.crs_id = ("{}:{}".format(authority, str(code)))
+                        self.crs_epsg_code = code
+                    # print(f"  Id: {authority}:{code}")
+                # srs_unit = " " + srs_as_projjson["coordinate_system"]["axis"][0]["unit"]
         self.geotransform = self.data_set.GetGeoTransform()
         self.size_fc = self.geotransform[1]
         self.size_sc = self.geotransform[5]
@@ -157,9 +270,111 @@ class Raster:
             min_value, max_value = self.raster_by_band[i].ComputeRasterMinMax(True)
             self.min_value_by_band[i] = min_value * self.scale_by_band[i] + self.offset_by_band[i]
             self.max_value_by_band[i] = max_value * self.scale_by_band[i] + self.offset_by_band[i]
-            if load_data:
-                self.data_by_band[i] = self.raster_by_band[i].ReadAsArray() # in original data type
-            yo = 1
         self.file_path = file_path
         return str_error
+
+    def set_bicubic_coef_matrix(self):
+        if not self.bicubic_coef_matrix:
+            self.bicubic_coef_matrix = np.zeros((4, 4))
+            self.bicubic_coef_matrix[0][0] = 1
+            self.bicubic_coef_matrix[1][4] = 1
+            self.bicubic_coef_matrix[2][0] = -3
+            self.bicubic_coef_matrix[2][1] = 3
+            self.bicubic_coef_matrix[2][4] = -2
+            self.bicubic_coef_matrix[2][5] = -1
+            self.bicubic_coef_matrix[3][0] = 2
+            self.bicubic_coef_matrix[3][1] = -2
+            self.bicubic_coef_matrix[3][4] = 1
+            self.bicubic_coef_matrix[3][5] = 1
+            self.bicubic_coef_matrix[4][8] = 1
+            self.bicubic_coef_matrix[5][12] = 1
+            self.bicubic_coef_matrix[6][8] = -3
+            self.bicubic_coef_matrix[6][9] = 3
+            self.bicubic_coef_matrix[6][12] = -2
+            self.bicubic_coef_matrix[6][13] = -1
+            self.bicubic_coef_matrix[7][8] = 2
+            self.bicubic_coef_matrix[7][9] = -2
+            self.bicubic_coef_matrix[7][12] = 1
+            self.bicubic_coef_matrix[7][13] = 1
+            self.bicubic_coef_matrix[8][0] = -3
+            self.bicubic_coef_matrix[8][2] = 3
+            self.bicubic_coef_matrix[8][8] = -2
+            self.bicubic_coef_matrix[8][10] = -1
+            self.bicubic_coef_matrix[9][4] = -3
+            self.bicubic_coef_matrix[9][6] = 3
+            self.bicubic_coef_matrix[9][12] = -2
+            self.bicubic_coef_matrix[9][14] = -1
+            self.bicubic_coef_matrix[10][0] = 9
+            self.bicubic_coef_matrix[10][1] = -9
+            self.bicubic_coef_matrix[10][2] = -9
+            self.bicubic_coef_matrix[10][3] = 9
+            self.bicubic_coef_matrix[10][4] = 6
+            self.bicubic_coef_matrix[10][5] = 3
+            self.bicubic_coef_matrix[10][6] = -6
+            self.bicubic_coef_matrix[10][7] = -3
+            self.bicubic_coef_matrix[10][8] = 6
+            self.bicubic_coef_matrix[10][9] = -6
+            self.bicubic_coef_matrix[10][10] = 3
+            self.bicubic_coef_matrix[10][11] = -3
+            self.bicubic_coef_matrix[10][12] = 4
+            self.bicubic_coef_matrix[10][13] = 2
+            self.bicubic_coef_matrix[10][14] = 2
+            self.bicubic_coef_matrix[10][15] = 1
+            self.bicubic_coef_matrix[11][0] = -6
+            self.bicubic_coef_matrix[11][1] = 6
+            self.bicubic_coef_matrix[11][2] = 6
+            self.bicubic_coef_matrix[11][3] = -6
+            self.bicubic_coef_matrix[11][4] = -3
+            self.bicubic_coef_matrix[11][5] = -3
+            self.bicubic_coef_matrix[11][6] = 3
+            self.bicubic_coef_matrix[11][7] = 3
+            self.bicubic_coef_matrix[11][8] = -4
+            self.bicubic_coef_matrix[11][9] = 4
+            self.bicubic_coef_matrix[11][10] = -2
+            self.bicubic_coef_matrix[11][11] = 2
+            self.bicubic_coef_matrix[11][12] = -2
+            self.bicubic_coef_matrix[11][13] = -2
+            self.bicubic_coef_matrix[11][14] = -1
+            self.bicubic_coef_matrix[11][15] = -1
+            self.bicubic_coef_matrix[12][0] = 2
+            self.bicubic_coef_matrix[12][2] = -2
+            self.bicubic_coef_matrix[12][8] = 1
+            self.bicubic_coef_matrix[12][10] = 1
+            self.bicubic_coef_matrix[13][4] = 2
+            self.bicubic_coef_matrix[13][6] = -2
+            self.bicubic_coef_matrix[13][12] = 1
+            self.bicubic_coef_matrix[13][14] = 1
+            self.bicubic_coef_matrix[14][0] = -6
+            self.bicubic_coef_matrix[14][1] = 6
+            self.bicubic_coef_matrix[14][2] = 6
+            self.bicubic_coef_matrix[14][3] = -6
+            self.bicubic_coef_matrix[14][4] = -4
+            self.bicubic_coef_matrix[14][5] = -2
+            self.bicubic_coef_matrix[14][6] = 4
+            self.bicubic_coef_matrix[14][7] = 2
+            self.bicubic_coef_matrix[14][8] = -3
+            self.bicubic_coef_matrix[14][9] = 3
+            self.bicubic_coef_matrix[14][10] = -3
+            self.bicubic_coef_matrix[14][11] = 3
+            self.bicubic_coef_matrix[14][12] = -2
+            self.bicubic_coef_matrix[14][13] = -1
+            self.bicubic_coef_matrix[14][14] = -2
+            self.bicubic_coef_matrix[14][15] = -1
+            self.bicubic_coef_matrix[15][0] = 4
+            self.bicubic_coef_matrix[15][1] = -4
+            self.bicubic_coef_matrix[15][2] = -4
+            self.bicubic_coef_matrix[15][3] = 4
+            self.bicubic_coef_matrix[15][4] = 2
+            self.bicubic_coef_matrix[15][5] = 2
+            self.bicubic_coef_matrix[15][6] = -2
+            self.bicubic_coef_matrix[15][7] = -2
+            self.bicubic_coef_matrix[15][8] = 2
+            self.bicubic_coef_matrix[15][9] = -2
+            self.bicubic_coef_matrix[15][10] = 2
+            self.bicubic_coef_matrix[15][11] = -2
+            self.bicubic_coef_matrix[15][12] = 1
+            self.bicubic_coef_matrix[15][13] = 1
+            self.bicubic_coef_matrix[15][14] = 1
+            self.bicubic_coef_matrix[15][15] = 1
+
 

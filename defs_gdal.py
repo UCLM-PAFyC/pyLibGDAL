@@ -3,6 +3,7 @@
 
 from osgeo import ogr, gdal
 
+MAX_PERCENTAGE_AVAILABLE_RAM_TO_USE = 80.
 GDAL_TAG_RASTER = 'DCAP_RASTER'
 GDAL_TAG_VECTOR = 'DCAP_VECTOR'
 
@@ -84,6 +85,18 @@ geometry_type_by_name['multilinestring_25d'] = ogr.wkbMultiLineString25D
 geometry_name_by_type[ogr.wkbMultiLineString25D] = 'multilinestring_25d'
 
 RASTER_FULL_PRECISION_CODE = -1
+gdal_bytes_by_type = {}
+gdal_bytes_by_type[1] = 1
+gdal_bytes_by_type[2] = 2
+gdal_bytes_by_type[3] = 2
+gdal_bytes_by_type[4] = 4
+gdal_bytes_by_type[5] = 4
+gdal_bytes_by_type[6] = 4
+gdal_bytes_by_type[7] = 8
+# gdal_bytes_by_type[8] = 1
+# gdal_bytes_by_type[9] = 1
+# gdal_bytes_by_type[10] = 1
+# gdal_bytes_by_type[11] = 1
 # GDAL Raster Data Types
 # Unknown or unspecified type gdalconst.GDT_Unknown 0
 # 8-bit inconsistent integers gdalconst.GDT_Byte 1
