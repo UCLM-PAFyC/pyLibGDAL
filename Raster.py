@@ -94,27 +94,107 @@ class Raster:
             str_error = ('Position: {} is not in raster data bands container'.format(str(band_position)))
             return str_error, coefs
         data = self.data_by_band[band_position]
-        x = np.zeros(16)
-        x[0] = data[r, c]
-        x[1] = data[r + 1, c]
-        x[2] = data[r, c + 1]
-        x[3] = data[r + 1, c + 1]
-        x[4] = (data[r + 1, c] - data[r - 1, c]) / 2.  # df/dx central diff
-        x[5] = (data[r + 2, c] - data[r, c]) / 2.  # df/dx central diff
-        x[6] = (data[r + 1, c + 1] - data[r - 1, c + 1]) / 2.  # df/dx central diff
-        x[7] = (data[r + 2, c + 1] - data[r, c + 1]) / 2.  # df/dx central diff
-        x[8] = (data[r, c + 1] - data[r, c - 1]) / 2.  # df/dy central diff
-        x[9] = (data[r + 1, c + 1] - data[r + 1, c - 1]) / 2.  # df/dy central diff
-        x[10] = (data[r, c + 2] - data[r, c]) / 2.  # df/dy central diff
-        x[11] = (data[r + 1, c + 2] - data[r + 1, c]) / 2.  # df/dy central diff
-        x[12] = (data[r + 1, c + 1] + data[r - 1, c - 1] - data[r + 1, c - 1] - data[
-            r - 1, c + 1]) / 2.  # d2f/(dxdy] central diff
-        x[13] = (data[r + 2, c + 1] + data[r, c - 1] - data[r + 2, c - 1] - data[r, c + 1]) / 2.
-        x[14] = (data[r + 1, c + 2] + data[r - 1, c] - data[r + 1, c] - data[r - 1, c + 2]) / 2.
-        x[15] = (data[r + 2, c + 2] + data[r, c] - data[r + 2, c] - data[r, c + 2]) / 2.
-        self.set_bicubic_coef_matrix()
-        alpha = self.bicubic_coef_matrix * x
-        coef = alpha.transpose()
+        values = np.zeros((4, 4))
+        for i in range(r - 1 , r + 3):
+            for j in range(c - 1, c + 3):
+                if self.no_data_value_by_band[band_position]:
+                    if data[i, j] == self.no_data_value_by_band[band_position]:
+                        str_error = ('Exists no data value in posidion: [row = {}, col = {}]\nin band position: {}'
+                                     .format(str(i), str(j), str(band_position)))
+                        return str_error, coefs
+                values[i - (r - 1), j - (c - 1)] = (data[i, j] * self.scale_by_band[band_position]
+                                                    + self.offset_by_band[band_position])
+
+        f_0_0 = values[1, 1]
+        # f_0_0 = data[r, c]
+
+        f_1_0 = values[2, 1]
+        # f_1_0 = data[r + 1, c]
+
+        f_0_1 = values[1, 2]
+        # f_0_1 = data[r, c + 1]
+
+        f_1_1 = values[2, 2]
+        # f_1_1 = data[r + 1, c + 1]
+
+        f_x_0_0 = (values[2, 1] - values[0, 1]) / 2.  # df/dx central diff
+        # f_x_0_0 = (data[r + 1, c] - data[r - 1, c]) / 2.  # df/dx central diff
+
+        f_x_1_0 = (values[3, 1] - values[1, 1]) / 2.  # df/dx central diff
+        # f_x_1_0 = (data[r + 2, c] - data[r, c]) / 2.  # df/dx central diff
+
+        f_x_0_1 = (values[2, 2] - values[0, 2]) / 2.  # df/dx central diff
+        # f_x_0_1 = (data[r + 1, c + 1] - data[r - 1, c + 1]) / 2.  # df/dx central diff
+
+        f_x_1_1 = (values[3, 2] - values[1, 2]) / 2.  # df/dx central diff
+        # f_x_1_1 = (data[r + 2, c + 1] - data[r, c + 1]) / 2.  # df/dx central diff
+
+        f_y_0_0 = (values[1, 2] - values[1, 0]) / 2.  # df/dy central diff
+        # f_y_0_0 = (data[r, c + 1] - data[r, c - 1]) / 2.  # df/dy central diff
+
+        f_y_1_0 = (values[2, 2] - values[2, 0]) / 2.  # df/dy central diff
+        # f_y_1_0 = (data[r + 1, c + 1] - data[r + 1, c - 1]) / 2.  # df/dy central diff
+
+        f_y_0_1 = (values[1, 3] - values[1, 1]) / 2.  # df/dy central diff
+        # f_y_0_1 = (data[r, c + 2] - data[r, c]) / 2.  # df/dy central diff
+
+        f_y_1_1 = (values[2, 3] - values[2, 1]) / 2.  # df/dy central diff
+        # f_y_1_1 = (data[r + 1, c + 2] - data[r + 1, c]) / 2.  # df/dy central diff
+
+        f_x_y_0_0 = (values[2, 2] + values[0, 0] - values[2, 0] - values[0, 2]) / 2.  # d2f/(dxdy] central diff
+        # f_x_y_0_0 = (data[r + 1, c + 1] + data[r - 1, c - 1] - data[r + 1, c - 1] - data[
+        #     r - 1, c + 1]) / 2.  # d2f/(dxdy] central diff
+
+        f_x_y_1_0 = (values[3, 2] + values[1, 0] - values[3, 0] - values[1, 2]) / 2.
+        # f_x_y_1_0 = (data[r + 2, c + 1] + data[r, c - 1] - data[r + 2, c - 1] - data[r, c + 1]) / 2.
+
+        f_x_y_0_1 = (values[2, 3] + values[0, 1] - values[2, 1] - values[0, 3]) / 2.
+        # f_x_y_0_1 = (data[r + 1, c + 2] + data[r - 1, c] - data[r + 1, c] - data[r - 1, c + 2]) / 2.
+
+        f_x_y_1_1 = (values[3, 3] + values[1, 1] - values[3, 1] - values[1, 3]) / 2.
+        # f_x_y_1_1 = (data[r + 2, c + 2] + data[r, c] - data[r + 2, c] - data[r, c + 2]) / 2.
+
+        f_matrix = np.zeros((4, 4))
+        f_matrix[0][0] = f_0_0
+        f_matrix[0][1] = f_0_1
+        f_matrix[0][2] = f_y_0_0
+        f_matrix[0][3] = f_y_0_1
+        f_matrix[1][0] = f_1_0
+        f_matrix[1][1] = f_1_1
+        f_matrix[1][2] = f_y_1_0
+        f_matrix[1][3] = f_y_1_1
+        f_matrix[2][0] = f_x_0_0
+        f_matrix[2][1] = f_x_0_1
+        f_matrix[2][2] = f_x_y_0_0
+        f_matrix[2][3] = f_x_y_0_1
+        f_matrix[3][0] = f_x_1_0
+        f_matrix[3][1] = f_x_1_1
+        f_matrix[3][2] = f_x_y_1_0
+        f_matrix[3][3] = f_x_y_1_1
+        int_matrix = np.matrix('1 0 0 0;1 1 1 1;0 1 0 0;0 1 2 3')
+        inv_int_matrix = np.linalg.inv(int_matrix)
+        coef = inv_int_matrix * f_matrix * inv_int_matrix.transpose()
+        # x = np.zeros(16)
+        # x[0] = data[r, c]
+        # x[1] = data[r + 1, c]
+        # x[2] = data[r, c + 1]
+        # x[3] = data[r + 1, c + 1]
+        # x[4] = (data[r + 1, c] - data[r - 1, c]) / 2.  # df/dx central diff
+        # x[5] = (data[r + 2, c] - data[r, c]) / 2.  # df/dx central diff
+        # x[6] = (data[r + 1, c + 1] - data[r - 1, c + 1]) / 2.  # df/dx central diff
+        # x[7] = (data[r + 2, c + 1] - data[r, c + 1]) / 2.  # df/dx central diff
+        # x[8] = (data[r, c + 1] - data[r, c - 1]) / 2.  # df/dy central diff
+        # x[9] = (data[r + 1, c + 1] - data[r + 1, c - 1]) / 2.  # df/dy central diff
+        # x[10] = (data[r, c + 2] - data[r, c]) / 2.  # df/dy central diff
+        # x[11] = (data[r + 1, c + 2] - data[r + 1, c]) / 2.  # df/dy central diff
+        # x[12] = (data[r + 1, c + 1] + data[r - 1, c - 1] - data[r + 1, c - 1] - data[
+        #     r - 1, c + 1]) / 2.  # d2f/(dxdy] central diff
+        # x[13] = (data[r + 2, c + 1] + data[r, c - 1] - data[r + 2, c - 1] - data[r, c + 1]) / 2.
+        # x[14] = (data[r + 1, c + 2] + data[r - 1, c] - data[r + 1, c] - data[r - 1, c + 2]) / 2.
+        # x[15] = (data[r + 2, c + 2] + data[r, c] - data[r + 2, c] - data[r, c + 2]) / 2.
+        # self.set_bicubic_coef_matrix()
+        # alpha = self.bicubic_coef_matrix * x
+        # coef = alpha.transpose()
         return str_error, coef
 
     def bilinear_coefs(self, r, c, band_position):
@@ -217,7 +297,7 @@ class Raster:
             if str_error:
                 str_error = ('Getting bilinear coefficients, error:\n{}'.format(str_error))
                 return str_error
-        (coefs_rows, coefs_columns) = coefs.shape()
+        coefs_columns = coefs.shape[1]
         dx = np.zeros((1, coefs_columns))
         dy = np.zeros((coefs_columns, 1))
         x = np.ones((1, coefs_columns))
@@ -377,7 +457,7 @@ class Raster:
 
     def set_bicubic_coef_matrix(self):
         if not self.bicubic_coef_matrix:
-            self.bicubic_coef_matrix = np.zeros((4, 4))
+            self.bicubic_coef_matrix = np.zeros((16, 16))
             self.bicubic_coef_matrix[0][0] = 1
             self.bicubic_coef_matrix[1][4] = 1
             self.bicubic_coef_matrix[2][0] = -3
