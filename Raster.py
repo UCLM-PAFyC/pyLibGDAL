@@ -42,6 +42,8 @@ assert err.err_level == gdal.CE_None, 'the error level starts at 0'
 class Raster:
     def __init__(self,
                  precision = 3):
+        # precision -1 for no try to optimize data type
+        # precision 0 for round as integer float values
         self.crs_tools = CRSsTools()
         self.data_set = None
         self.precision = precision
@@ -66,6 +68,8 @@ class Raster:
         self.se_sc = None
         self.sw_fc = None
         self.sw_sc = None
+        self.gdal_scale_by_band = {}
+        self.gdal_offset_by_band = {}
         self.scale_by_band = {}
         self.offset_by_band = {}
         self.min_value_by_band = {}
@@ -355,23 +359,68 @@ class Raster:
                 str_error = ('Position: {} is not in raster bands container'.format(str(i)))
                 return str_error
             if not self.array_by_band[i]:
-                ram = psutil.virtual_memory()
-                available_ram_in_bytes = ram.available
-                bytes_by_pixel = None
-                if self.gdal_data_type_by_band[i] in defs_gdal.gdal_bytes_by_type:
-                    bytes_by_pixel = defs_gdal.gdal_bytes_by_type[self.gdal_data_type_by_band[i]]
-                else:
-                    str_error = ('Invalid data type for band position: {}'.format(str(i)))
-                    return str_error
-                needed_memory_in_bytes = self.columns * self.rows * bytes_by_pixel
-                if needed_memory_in_bytes > (available_ram_in_bytes * defs_gdal.MAX_PERCENTAGE_AVAILABLE_RAM_TO_USE / 100.):
-                    str_error = ('There are no enough available RAM to load band position: {}'.format(str(i)))
-                    return str_error
                 try:
                     self.array_by_band[i] = self.raster_by_band[i].ReadAsMaskedArray()  # in original data type
                 except Exception as e:
                     str_error = 'GDAL Error: ' + e.args[0]
-            return str_error
+                if self.precision != -1:
+                    min_value_as_integer = math.floor(self.min_value_by_band[i] * self.dbl_to_int)
+                    max_value_as_integer = math.ceil(self.max_value_by_band[i] * self.dbl_to_int)
+                    range_as_integer = max_value_as_integer - min_value_as_integer
+                    new_dtype = np.uint8
+                    if range_as_integer > (2 ** 8):
+                        new_dtype = np.uint16
+                    if range_as_integer > (2 ** 16):
+                        new_dtype = np.uint32
+                    if range_as_integer > (2 ** 32):
+                        new_dtype = np.uint64
+                    if range_as_integer > (2 ** 64):
+                        new_dtype = np.float32
+                    gdal_data_type = self.gdal_data_type_by_band[i]
+                    gdal_scale = self.gdal_scale_by_band[i]
+                    gdal_offset = self.gdal_offset_by_band[i]
+                    array_type = self.array_by_band[i].dtype
+                    n_bytes = np.dtype(array_type).itemsize
+                    new_bytes = np.dtype(new_dtype).itemsize
+                    if new_bytes >= n_bytes:
+                        continue
+                    array_type_name = array_type.name
+                    # value_1 = self.array_by_band[i][1210, 1877]
+                    if not 'float' in array_type_name:
+                        self.array_by_band[i] = self.array_by_band[i].astype('float32')#, copy = False)
+                        if gdal_scale != 1:
+                            self.array_by_band[i].__imul__(gdal_scale)
+                            # value_2 = self.array_by_band[i][1210, 1877]
+                        if gdal_offset != 0:
+                            self.array_by_band[i].__iadd__(gdal_offset)
+                            # value_3 = self.array_by_band[i][1210, 1877]
+                    self.array_by_band[i].__imul__(self.dbl_to_int)
+                    # value_4 = self.array_by_band[i][1210, 1877]
+                    self.array_by_band[i].__iadd__(-1.* min_value_as_integer)
+                    # value_5 = self.array_by_band[i][1210, 1877]
+                    self.array_by_band[i] = self.array_by_band[i].astype(new_dtype)#, copy=False)
+                    # value_6 = self.array_by_band[i][1210, 1877]
+                    self.scale_by_band[i] = self.int_to_dbl
+                    self.offset_by_band[i] = min_value_as_integer * self.int_to_dbl
+                    yo = 1
+
+                # ram = psutil.virtual_memory()
+                # available_ram_in_bytes = ram.available
+                # bytes_by_pixel = None
+                # if self.gdal_data_type_by_band[i] in defs_gdal.gdal_bytes_by_type:
+                #     bytes_by_pixel = defs_gdal.gdal_bytes_by_type[self.gdal_data_type_by_band[i]]
+                # else:
+                #     str_error = ('Invalid data type for band position: {}'.format(str(i)))
+                #     return str_error
+                # needed_memory_in_bytes = self.columns * self.rows * bytes_by_pixel
+                # if needed_memory_in_bytes > (available_ram_in_bytes * defs_gdal.MAX_PERCENTAGE_AVAILABLE_RAM_TO_USE / 100.):
+                #     str_error = ('There are no enough available RAM to load band position: {}'.format(str(i)))
+                #     return str_error
+                # try:
+                #     self.array_by_band[i] = self.raster_by_band[i].ReadAsMaskedArray()  # in original data type
+                # except Exception as e:
+                #     str_error = 'GDAL Error: ' + e.args[0]
+        return str_error
 
     def set_from_file(self,
                       file_path):
@@ -443,6 +492,8 @@ class Raster:
         self.sw_fc = self.geotransform[0] + 0.0 * self.geotransform[1] + self.rows * self.geotransform[2]
         self.sw_sc = self.geotransform[3] + 0.0 * self.geotransform[4] + self.rows * self.geotransform[5]
         self.number_of_bands = self.data_set.RasterCount
+        self.gdal_scale_by_band = {}
+        self.gdal_offset_by_band = {}
         self.scale_by_band = {}
         self.offset_by_band = {}
         self.min_value_by_band = {}
@@ -454,18 +505,20 @@ class Raster:
         for i in range(self.number_of_bands):
             self.raster_by_band[i] = self.data_set.GetRasterBand(i+1)
             self.gdal_data_type_by_band[i] = self.raster_by_band[i].DataType
-            self.scale_by_band[i] = self.raster_by_band[i].GetScale() # value or Non
-            if not self.scale_by_band[i]:
-                self.scale_by_band[i] = 1.
-            self.offset_by_band[i] = self.raster_by_band[i].GetOffset() # value or None
-            if not self.offset_by_band[i]:
-                self.offset_by_band[i] = 0.
+            self.gdal_scale_by_band[i] = self.raster_by_band[i].GetScale() # value or Non
+            if not self.gdal_scale_by_band[i]:
+                self.gdal_scale_by_band[i] = 1
+            self.scale_by_band[i] = self.gdal_scale_by_band[i]
+            self.gdal_offset_by_band[i] = self.raster_by_band[i].GetOffset() # value or None
+            if not self.gdal_offset_by_band[i]:
+                self.gdal_offset_by_band[i] = 0
+            self.offset_by_band[i] = self.gdal_offset_by_band[i]
             # self.gdal_data_type_by_band[idx] = gdal.GetDataTypeName(band.DataType)
             self.array_by_band[i] = None
             self.no_data_value_by_band[i] = self.raster_by_band[i].GetNoDataValue()
             min_value, max_value = self.raster_by_band[i].ComputeRasterMinMax(True)
-            self.min_value_by_band[i] = min_value * self.scale_by_band[i] + self.offset_by_band[i]
-            self.max_value_by_band[i] = max_value * self.scale_by_band[i] + self.offset_by_band[i]
+            self.min_value_by_band[i] = min_value * self.gdal_scale_by_band[i] + self.gdal_offset_by_band[i]
+            self.max_value_by_band[i] = max_value * self.gdal_scale_by_band[i] + self.gdal_offset_by_band[i]
         self.file_path = file_path
         return str_error
 
