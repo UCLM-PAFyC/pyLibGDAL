@@ -184,16 +184,16 @@ class GDALTools(object):
                                    stderr=subprocess.PIPE)
             info_as_json, error = res.communicate()
             if error:
-                str_error = ('In command:\{}\nError:\n{}'.format(command, error.strip()))
+                str_error = ('In command:\n{}\nError:\n{}'.format(command, error.strip()))
                 return str_error, info_as_json
         # except CalledProcessError as e:
         #   print "CalledError > ",e.returncode
         #   print "CalledError > ",e.output
         except OSError as e:
-            str_error = ('In command:\{}\nError:\n{}\n{}\n{}'.format(command, e.errno, e.strerror, e.filename))
+            str_error = ('In command:\n{}\nError:\n{}\n{}\n{}'.format(command, e.errno, e.strerror, e.filename))
             return str_error, info_as_json
         except:
-            str_error = ('In command:\{}\nError:\n{}'.format(command, sys.exc_info()[0]))
+            str_error = ('In command:\n{}\nError:\n{}'.format(command, sys.exc_info()[0]))
             return str_error, info_as_json
         return str_error, info_as_json
 
@@ -595,16 +595,16 @@ class GDALTools(object):
                                    stderr=subprocess.PIPE)
             info_as_json, error = res.communicate()
             if error:
-                str_error = ('In command:\{}\nError:\n{}'.format(command, error.strip()))
+                str_error = ('In command:\n{}\nError:\n{}'.format(command, error.strip()))
                 return str_error, info_as_json
         # except CalledProcessError as e:
         #   print "CalledError > ",e.returncode
         #   print "CalledError > ",e.output
         except OSError as e:
-            str_error = ('In command:\{}\nError:\n{}\n{}\n{}'.format(command, e.errno, e.strerror, e.filename))
+            str_error = ('In command:\n{}\nError:\n{}\n{}\n{}'.format(command, e.errno, e.strerror, e.filename))
             return str_error, info_as_json
         except:
-            str_error = ('In command:\{}\nError:\n{}'.format(command, sys.exc_info()[0]))
+            str_error = ('In command:\n{}\nError:\n{}'.format(command, sys.exc_info()[0]))
             return str_error, info_as_json
         return str_error, info_as_json
 
