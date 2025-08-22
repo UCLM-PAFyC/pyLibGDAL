@@ -101,21 +101,24 @@ class Raster:
             return str_error, coefs
         data = self.array_by_band[band_position]
         no_masked_values = []
+        no_masked_values_mean = 0.
         for i in range(r - 1 , r + 3):
             for j in range(c - 1, c + 3):
                 if not np.ma.is_masked(data[i, j]):
                     no_masked_values.append(data[i, j])
+                    no_masked_values_mean = no_masked_values_mean + data[i, j]
         if len(no_masked_values) == 0:
             str_error = ('Not exists valid values for posidion: [row = {}, col = {}]\nin band position: {}'
-                         .format(str(i), str(j), str(band_position)))
+                         .format(str(r), str(c), str(band_position)))
             return str_error, coefs
-        mode_value = mode(no_masked_values)
+        # mode_value = mode(no_masked_values)
+        mean_value = no_masked_values_mean / len(no_masked_values)
         values = np.zeros((4, 4))
         for i in range(r - 1 , r + 3):
             for j in range(c - 1, c + 3):
                 value = data[i, j]
                 if np.ma.is_masked(data[i, j]):
-                    value = mode_value
+                    value = mean_value
                 values[i - (r - 1), j - (c - 1)] = (value * self.scale_by_band[band_position]
                                                     + self.offset_by_band[band_position])
 
@@ -211,7 +214,7 @@ class Raster:
         # coef = alpha.transpose()
         return str_error, coef
 
-    def bilinear_coefs(self, r, c, band_position):
+    def bilinear_coefs(self, r, c, band_position): # https://en.wikipedia.org/wiki/Bilinear_interpolation
         str_error = ''
         coefs = None
         if not self.data_set:
@@ -230,11 +233,36 @@ class Raster:
             str_error = ('Position: {} is not in raster data bands container'.format(str(band_position)))
             return str_error, coefs
         data = self.array_by_band[band_position]
+        no_masked_values = []
+        no_masked_values_mean = 0.
+        for i in range(r, r + 2):
+            for j in range(c, c + 2):
+                if not np.ma.is_masked(data[i, j]):
+                    no_masked_values.append(data[i, j])
+                    no_masked_values_mean = no_masked_values_mean + data[i, j]
+        if len(no_masked_values) == 0:
+            str_error = ('Not exists valid values for posidion: [row = {}, col = {}]\nin band position: {}'
+                         .format(str(r), str(c), str(band_position)))
+            return str_error, coefs
+        # mode_value = mode(no_masked_values)
+        mean_value = no_masked_values_mean / len(no_masked_values)
+        values = np.zeros((2, 2))
+        for i in range(r , r + 2):
+            for j in range(c, c + 2):
+                value = data[i, j]
+                if np.ma.is_masked(data[i, j]):
+                    value = mean_value
+                values[i - r, j - c] = (value * self.scale_by_band[band_position]
+                                        + self.offset_by_band[band_position])
         coefs = np.zeros((2,2))
-        coefs[0][0] = data[r][c]
-        coefs[1][0] = data[r + 1][c] - data[r][c]
-        coefs[0][1] = data[r][c + 1] - data[r][c]
-        coefs[1][1] = (data[r + 1][c + 1] + data[r][c]) - (data[r + 1][c] + data[r][c + 1])
+        coefs[0][0] = values[0][0]
+        # coefs[0][0] = data[r][c]
+        coefs[1][0] = values[1][0] - values[0][0]
+        # coefs[1][0] = data[r + 1][c] - data[r][c]
+        coefs[0][1] = values[0][1] - values[0][0]
+        # coefs[0][1] = data[r][c + 1] - data[r][c]
+        coefs[1][1] = (values[1][1] + values[0][0]) - (values[1][0] + values[0][1])
+        # coefs[1][1] = (data[r + 1][c + 1] + data[r][c]) - (data[r + 1][c] + data[r][c + 1])
         return str_error, coefs
 
     def interpolate_derivate(self,
@@ -323,19 +351,10 @@ class Raster:
             dy[i][0] = (dc ** (i - 1)) * i
         tmp = dx * coefs * y
         du_dr = tmp[0][0]
+        du_dr = du_dr.item()
         tmp = x * coefs * dy
         du_dc = tmp[0][0]
-        # for(i=1; i<dim; i++) {
-        #   x(0,i) = pow(dr,i);
-        #   dx(0,i) = pow(dr,i-1)*i;
-        #   y(i,0) = pow(dc,i);
-        #   dy(i,0) = pow(dc,i-1)*i;
-        # }
-        # tmp = dx*coefs*y;
-        # di_dr = tmp(0,0);
-        # tmp = x*coefs*dy;
-        # di_dc = tmp(0,0);
-
+        du_dc = du_dc.item()
         return str_error, du_dr, du_dc
 
     def load(self,
@@ -386,8 +405,8 @@ class Raster:
                         continue
                     array_type_name = array_type.name
                     # value_1 = self.array_by_band[i][1210, 1877]
-                    if not 'float' in array_type_name:
-                        self.array_by_band[i] = self.array_by_band[i].astype('float32')#, copy = False)
+                    if not 'float' in array_type_name and (gdal_scale != 1 or gdal_offset != 0):
+                        self.array_by_band[i] = self.array_by_band[i].astype('float32', copy = False)
                         if gdal_scale != 1:
                             self.array_by_band[i].__imul__(gdal_scale)
                             # value_2 = self.array_by_band[i][1210, 1877]
@@ -398,11 +417,10 @@ class Raster:
                     # value_4 = self.array_by_band[i][1210, 1877]
                     self.array_by_band[i].__iadd__(-1.* min_value_as_integer)
                     # value_5 = self.array_by_band[i][1210, 1877]
-                    self.array_by_band[i] = self.array_by_band[i].astype(new_dtype)#, copy=False)
+                    self.array_by_band[i] = self.array_by_band[i].astype(new_dtype, copy=False)
                     # value_6 = self.array_by_band[i][1210, 1877]
                     self.scale_by_band[i] = self.int_to_dbl
                     self.offset_by_band[i] = min_value_as_integer * self.int_to_dbl
-                    yo = 1
 
                 # ram = psutil.virtual_memory()
                 # available_ram_in_bytes = ram.available
