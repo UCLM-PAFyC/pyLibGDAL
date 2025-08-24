@@ -265,39 +265,38 @@ class Raster:
         # coefs[1][1] = (data[r + 1][c + 1] + data[r][c]) - (data[r + 1][c] + data[r][c + 1])
         return str_error, coefs
 
-    def interpolate_derivate(self,
-                             coordinates,
-                             crs_id,
-                             band_position,
-                             interpolation_method):
+    def interpolate(self,
+                    coordinates,
+                    crs_id,
+                    band_position,
+                    interpolation_method):
         str_error = ''
-        du_dr = None
-        du_dc = None
+        interpolated_value = None
         if not isinstance(coordinates, list):
             str_error = ('Argument coordinates must be a list and is a: {}'.format(str(type(coordinates))))
-            return str_error, du_dr, du_dc
+            return str_error, interpolated_value
         if len(coordinates) < 2:
             str_error = ('Argument coordinates must be a list with two values at leas')
-            return str_error, du_dr, du_dc
+            return str_error, interpolated_value
         if not isinstance(crs_id, str):
             str_error = ('Argument crs_id must be a string and is a: {}'.format(str(type(crs_id))))
-            return str_error, du_dr, du_dc
+            return str_error, interpolated_value
         if (interpolation_method.casefold() != defs_gdal.INTERPOLATION_METHOD_BICUBIC.casefold()
                 and interpolation_method.casefold() != defs_gdal.INTERPOLATION_METHOD_BILINEAR.casefold()):
             str_error = ('Argument interpolation method bust be {} or {}'.
                          format(defs_gdal.INTERPOLATION_METHOD_BICUBIC, defs_gdal.INTERPOLATION_METHOD_BILINEAR))
-            return str_error, du_dr, du_dc
+            return str_error, interpolated_value
         if not self.data_set:
             str_error = ('Data set is not initialized')
-            return str_error
+            return str_error, interpolated_value
         if not band_position in self.raster_by_band:
             str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
-            return str_error
+            return str_error, interpolated_value
         if not band_position in self.array_by_band:
             str_error = self.load(True,[band_position])
             if str_error:
                 str_error = ('Loading band position: {}\nerror:\n{}'.format(str(band_position), str_error))
-                return str_error
+                return str_error, interpolated_value
         if len(coordinates) == 2:
             coordinates.append(0.)
         coordinates_in_raster_crs = [coordinates] # list of list
@@ -306,7 +305,7 @@ class Raster:
             if str_error:
                 if str_error:
                     str_error = ('Converting coordinates to raster CRS, error:\n{}'.format(str_error))
-                    return str_error
+                    return str_error, interpolated_value
         fc = coordinates_in_raster_crs[0][0]
         sc = coordinates_in_raster_crs[0][1]
         col = (fc - self.nw_fc) / self.size_fc
@@ -333,12 +332,97 @@ class Raster:
             str_error, coefs = self.bicubic_coefs(r, c, band_position)
             if str_error:
                 str_error = ('Getting bicubic coefficients, error:\n{}'.format(str_error))
-                return str_error
+                return str_error, interpolated_value
         elif interpolation_method.casefold() == defs_gdal.INTERPOLATION_METHOD_BILINEAR.casefold():
             str_error, coefs = self.bilinear_coefs(r, c, band_position)
             if str_error:
                 str_error = ('Getting bilinear coefficients, error:\n{}'.format(str_error))
-                return str_error
+                return str_error, interpolated_value
+        coefs_columns = coefs.shape[1]
+        x = np.ones((1, coefs_columns))
+        y = np.ones((coefs_columns, 1))
+        for i in range(1, coefs_columns):
+            x[0][i] = dr ** i
+            y[i][0] = dc ** i
+        tmp = x * coefs * y
+        interpolated_value = tmp[0][0]
+        interpolated_value = interpolated_value.item()
+        return str_error, interpolated_value
+
+    def interpolate_derivate(self,
+                             coordinates,
+                             crs_id,
+                             band_position,
+                             interpolation_method):
+        str_error = ''
+        du_dr = None
+        du_dc = None
+        if not isinstance(coordinates, list):
+            str_error = ('Argument coordinates must be a list and is a: {}'.format(str(type(coordinates))))
+            return str_error, du_dr, du_dc
+        if len(coordinates) < 2:
+            str_error = ('Argument coordinates must be a list with two values at leas')
+            return str_error, du_dr, du_dc
+        if not isinstance(crs_id, str):
+            str_error = ('Argument crs_id must be a string and is a: {}'.format(str(type(crs_id))))
+            return str_error, du_dr, du_dc
+        if (interpolation_method.casefold() != defs_gdal.INTERPOLATION_METHOD_BICUBIC.casefold()
+                and interpolation_method.casefold() != defs_gdal.INTERPOLATION_METHOD_BILINEAR.casefold()):
+            str_error = ('Argument interpolation method bust be {} or {}'.
+                         format(defs_gdal.INTERPOLATION_METHOD_BICUBIC, defs_gdal.INTERPOLATION_METHOD_BILINEAR))
+            return str_error, du_dr, du_dc
+        if not self.data_set:
+            str_error = ('Data set is not initialized')
+            return str_error, du_dr, du_dc
+        if not band_position in self.raster_by_band:
+            str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
+            return str_error, du_dr, du_dc
+        if not band_position in self.array_by_band:
+            str_error = self.load(True,[band_position])
+            if str_error:
+                str_error = ('Loading band position: {}\nerror:\n{}'.format(str(band_position), str_error))
+                return str_error, du_dr, du_dc
+        if len(coordinates) == 2:
+            coordinates.append(0.)
+        coordinates_in_raster_crs = [coordinates] # list of list
+        if self.crs_id != crs_id:
+            str_error = self.crs_tools.operation(crs_id, self.crs_id, coordinates_in_raster_crs)
+            if str_error:
+                if str_error:
+                    str_error = ('Converting coordinates to raster CRS, error:\n{}'.format(str_error))
+                    return str_error, du_dr, du_dc
+        fc = coordinates_in_raster_crs[0][0]
+        sc = coordinates_in_raster_crs[0][1]
+        col = (fc - self.nw_fc) / self.size_fc
+        row = (self.nw_sc - sc) / self.size_sc
+        r = math.floor(row)
+        c = math.floor(col)
+        dr = row - r
+        dc = col - c
+        # Sanity check for rounding errors
+        while dr < 0.:
+            dr += 1.0
+            r -= 1
+        while dr >= 1.:
+            dr -= 1.0
+            r += 1
+        while dc < 0.:
+            dc += 1.0
+            c -= 1
+        while dc >= 1.:
+            dc -= 1.0
+            c += 1
+        coefs = None
+        if interpolation_method.casefold() == defs_gdal.INTERPOLATION_METHOD_BICUBIC.casefold():
+            str_error, coefs = self.bicubic_coefs(r, c, band_position)
+            if str_error:
+                str_error = ('Getting bicubic coefficients, error:\n{}'.format(str_error))
+                return str_error, du_dr, du_dc
+        elif interpolation_method.casefold() == defs_gdal.INTERPOLATION_METHOD_BILINEAR.casefold():
+            str_error, coefs = self.bilinear_coefs(r, c, band_position)
+            if str_error:
+                str_error = ('Getting bilinear coefficients, error:\n{}'.format(str_error))
+                return str_error, du_dr, du_dc
         coefs_columns = coefs.shape[1]
         dx = np.zeros((1, coefs_columns))
         dy = np.zeros((coefs_columns, 1))
