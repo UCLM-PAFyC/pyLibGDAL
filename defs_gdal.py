@@ -16,6 +16,7 @@ LAYERS_GEOMETRY_TYPE_TAG = 'geometry_type'
 FIELD_NAME_TAG = 'field_name'
 FIELD_TYPE_TAG = 'field_type'
 FIELD_VALUE_TAG = 'field_value'
+FIELD_FID_NAME = 'fid'
 
 type_by_name = {}
 name_by_type = {}
