@@ -254,6 +254,10 @@ class GDALTools(object):
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error, features
         layer = None
+        layer_geom_type = None
+        # layer_geom2d_type = None
+        layer_geom_name = ''
+        layer_geom2d_name = ''
         try:
             layer = ds.GetLayer(layer_name)
         except Exception as e:
@@ -262,14 +266,50 @@ class GDALTools(object):
         if not layer:
             str_error = ('Not exists layer: {}\nin file:\n{}'.format(layer_name, file_path))
             return str_error, features
+        try:
+            layer_defn = layer.GetLayerDefn()
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+            return str_error, features
+        try:
+            layer_geom_type = layer_defn.GetGeomType()
+            layer_geom_name = ogr.GeometryTypeToName(layer_geom_type)
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+            return str_error, features
+        for i in range(layer_defn.GetFieldCount()):
+            field_name_in_layer = layer_defn.GetFieldDefn(i).GetName()
+            yo = 1
+        layer_geom_name = layer_geom_name.lower()
+        layer_geom2d_name = layer_geom_name
+        if ('3d') in layer_geom2d_name:
+            layer_geom2d_name = layer_geom2d_name.replace('3d', '')
+        layer_geom2d_name = layer_geom2d_name.strip()
+        # try:
+        #     layer_geom2d_type = ogr.OGR_GT_Flatten(layer_geom_type)#.wkbFlatten(layer_geom_type)
+        # except Exception as e:
+        #     str_error = 'GDAL Error: ' + e.args[0]
+        #     return str_error, features
         for field_name in fields:
+            if field_name.casefold() == defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
+                continue
             field_type = fields[field_name]
             if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
-                if field_type != layer.GetGeomType():
-                    str_error = ('In file:\n{}\nin layer: {}\ngeometry type is: {}\ndifferent for selected: {}'.
-                                 format(file_path, layer_name, ogr.GeometryTypeToName(layer.GetGeomType()),
-                                        ogr.GeometryTypeToName(field_type)))
-                    return str_error, features
+                if field_type != layer_geom_type:
+                    # field_geom2d_type = ogr.wkbFlatten(field_type)
+                    field_geom_name = ogr.GeometryTypeToName(field_type)
+                    field_geom_name = field_geom_name.lower()
+                    field_geom2d_name = field_geom_name
+                    if ('3d') in field_geom2d_name:
+                        field_geom2d_name = field_geom2d_name.replace('3d', '')
+                    field_geom2d_name = field_geom2d_name.strip()
+                    # if field_geom2d_type != layer_geom2d_type:
+                    #     if ('3d').casefold() in layer_geom_name:
+                    if field_geom2d_name != layer_geom2d_name:
+                        str_error = ('In file:\n{}\nin layer: {}\ngeometry type is: {}\ndifferent for selected: {}'.
+                                     format(file_path, layer_name, ogr.GeometryTypeToName(layer_geom_type),
+                                            ogr.GeometryTypeToName(field_type)))
+                        return str_error, features
                 continue
             field_idx = layer.GetLayerDefn().GetFieldIndex(field_name)
             if field_idx == -1:
@@ -323,10 +363,26 @@ class GDALTools(object):
         for feature in layer:
             feature_fields = {}
             for field_name in fields:
+                if field_name.casefold() == defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
+                    fid_value = feature.GetFID()
+                    feature_fields[field_name] = fid_value
+                    continue
                 field_type = fields[field_name]
                 if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
                     if field_type != defs_gdal.geometry_type_by_name['none']:
-                        feature_fields[field_name] = feature.GetGeometryRef().ExportToWkb()
+                        feature_geometry_wkb = None
+                        try:
+                            feature_geometry = feature.GetGeometryRef()
+                        except Exception as e:
+                            str_error = 'GDAL Error: ' + e.args[0]
+                            return str_error, features
+                        if feature_geometry:
+                            try:
+                                feature_geometry_wkb = feature_geometry.ExportToWkb()
+                            except Exception as e:
+                                str_error = 'GDAL Error: ' + e.args[0]
+                                return str_error, features
+                        feature_fields[field_name] = feature_geometry_wkb
                     continue
                 field_idx = layer.GetLayerDefn().GetFieldIndex(field_name)
                 value = None
