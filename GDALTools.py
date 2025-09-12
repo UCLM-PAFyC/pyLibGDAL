@@ -857,26 +857,30 @@ class GDALTools(object):
                     if filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
                         # to do
                         continue
-                    filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
-                    if filter_field_idx == -1:
-                        str_error = ('No filter field: {} in layer: {}\nin file: {}'.
-                                     format(filter_field_name, layer_name, file_path))
-                        return str_error
-                    if not defs_gdal.FIELD_TYPE_TAG in filter_field:
-                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
-                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_NAME_TAG))
-                        return str_error
-                    if not defs_gdal.FIELD_VALUE_TAG in filter_field:
-                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
-                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_VALUE_TAG))
-                        return str_error
-                    filter_field_type = filter_field[defs_gdal.FIELD_TYPE_TAG]
-                    filter_field_defn = layer.GetLayerDefn().GetFieldDefn(filter_field_idx)
-                    filter_field_defn_type = filter_field_defn.GetType()
-                    if filter_field_defn_type != filter_field_type:
-                        str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin file:\n{}'.
-                                     format(filter_field_name, str(i + 1), layer_name, file_path))
-                        return str_error
+                    filter_field_defn_type = None
+                    if filter_field_name.casefold() != defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
+                        filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
+                        if filter_field_idx == -1:
+                            str_error = ('No filter field: {} in layer: {}\nin file: {}'.
+                                         format(filter_field_name, layer_name, file_path))
+                            return str_error
+                        if not defs_gdal.FIELD_TYPE_TAG in filter_field:
+                            str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_NAME_TAG))
+                            return str_error
+                        if not defs_gdal.FIELD_VALUE_TAG in filter_field:
+                            str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_VALUE_TAG))
+                            return str_error
+                        filter_field_type = filter_field[defs_gdal.FIELD_TYPE_TAG]
+                        filter_field_defn = layer.GetLayerDefn().GetFieldDefn(filter_field_idx)
+                        filter_field_defn_type = filter_field_defn.GetType()
+                        if filter_field_defn_type != filter_field_type:
+                            str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin file:\n{}'.
+                                         format(filter_field_name, str(i + 1), layer_name, file_path))
+                            return str_error
+                    else:
+                        filter_field_defn_type = defs_gdal.LAYERS_FIELD_FID_FIELD_TYPE
                     filter_field_value = filter_field[defs_gdal.FIELD_VALUE_TAG]
                     if cont_filter_field > 0:
                         filter_str += ' and '
@@ -888,7 +892,11 @@ class GDALTools(object):
                     if filter_field_defn_type == ogr.OFTString:
                         filter_str += '\''
                     cont_filter_field = cont_filter_field + 1
-                layer.SetAttributeFilter(filter_str)
+                try:
+                    layer.SetAttributeFilter(filter_str)
+                except Exception as e:
+                    str_error = 'GDAL Error: ' + e.args[0]
+                    return str_error
                 layer.ResetReading()
                 cont_feature = 0
                 number_of_features = layer.GetFeatureCount() # must be one if only one feature for filters
