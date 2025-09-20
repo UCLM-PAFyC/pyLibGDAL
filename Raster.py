@@ -50,9 +50,11 @@ class Raster:
         self.dbl_to_int = 10. ** precision
         self.int_to_dbl = 1.0 / self.dbl_to_int
         self.crs = None
+        self.crs_by_user = None # used in CRSs operations if exists
         self.crs_epsg_code = None
         self.vertical_crs_epsg_code = None
         self.crs_id = None
+        self.crs_id_by_user = None # used in CRSs operations if exists
         self.georef = None
         self.rows = None
         self.columns = None
@@ -524,6 +526,16 @@ class Raster:
                 #     str_error = 'GDAL Error: ' + e.args[0]
         return str_error
 
+    def set_crs_id_by_user(self,
+                           crs_id):
+        str_error = ''
+        str_error, crs = self.crs_tools.get_crs_from_id(crs_id)
+        if str_error:
+            return str_error
+        self.crs_id_by_user = crs_id
+        self.crs_by_user = crs
+        return
+
     def set_from_file(self,
                       file_path):
         str_error = ''
@@ -549,33 +561,76 @@ class Raster:
         self.crs_epsg_code = None
         self.vertical_crs_epsg_code = None
         self.crs_id = None
-        self.crs = self.data_set.GetSpatialRef()
+        self.crs = None
+        try:
+            self.crs = self.data_set.GetSpatialRef()
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
         srs_unit = ""
         if self.crs: # compound is pending
-            srs_as_projjson = json.loads(self.crs.ExportToPROJJSON())
-            srs_as_wkt = self.crs.ExportToPrettyWkt()
-            is_compound = self.crs.IsCompound()
-            if is_compound:
-                str_error, self.crs_id, self.crs_epsg_code, self.vertical_crs_epsg_code =(
-                    self.crs_tools.get_compound_crs_from_json(srs_as_projjson))
-                if str_error:
-                    return str_error
-            else:
-                # print("SRS:")
-                # srs_type = srs_as_projjson["type"]
-                # print(f"  Type: {srs_type}")
-                # name = srs_as_projjson["name"]
-                # print(f"  Name: {name}")
-                if "id" in srs_as_projjson:
-                    id = srs_as_projjson["id"]
-                    authority = id["authority"]
-                    code = id["code"]
-                    if authority.casefold() == 'EPSG'.casefold():
-                        self.crs_id = ("{}:{}".format(authority, str(code)))
-                        self.crs_epsg_code = code
-                    # print(f"  Id: {authority}:{code}")
-                # srs_unit = " " + srs_as_projjson["coordinate_system"]["axis"][0]["unit"]
-        self.geotransform = self.data_set.GetGeoTransform()
+            srs_as_projjson = ''
+            try:
+                srs_as_projjson = json.loads(self.crs.ExportToPROJJSON())
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+            # srs_as_wkt = self.crs.ExportToPrettyWkt()
+            if srs_as_projjson:
+                is_compound = False
+                try:
+                    is_compound = self.crs.IsCompound()
+                except Exception as e:
+                    str_error = 'GDAL Error: ' + e.args[0]
+                if is_compound:
+                    str_error, self.crs_id, self.crs_epsg_code, self.vertical_crs_epsg_code =(
+                        self.crs_tools.get_compound_crs_from_json(srs_as_projjson))
+                    if str_error:
+                        return str_error
+                else:
+                    # print("SRS:")
+                    # srs_type = srs_as_projjson["type"]
+                    # print(f"  Type: {srs_type}")
+                    # name = srs_as_projjson["name"]
+                    # print(f"  Name: {name}")
+                    if "id" in srs_as_projjson:
+                        id = srs_as_projjson["id"]
+                        authority = id["authority"]
+                        code = id["code"]
+                        if authority.casefold() == 'EPSG'.casefold():
+                            self.crs_id = ("{}:{}".format(authority, str(code)))
+                            self.crs_epsg_code = code
+                        # print(f"  Id: {authority}:{code}")
+                    else:
+                        if "source_crs" in srs_as_projjson:
+                            if "id" in srs_as_projjson["source_crs"]:
+                                id = srs_as_projjson["source_crs"]["id"]
+                                authority = id["authority"]
+                                code = id["code"]
+                                if authority.casefold() == 'EPSG'.casefold():
+                                    self.crs_id = ("{}:{}".format(authority, str(code)))
+                                    self.crs_epsg_code = code
+                    # srs_unit = " " + srs_as_projjson["coordinate_system"]["axis"][0]["unit"]
+        if not self.crs_id and self.crs:
+            authority = ''
+            try:
+                authority = self.crs.GetAuthorityName(None)
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+            if authority.casefold() == 'EPSG'.casefold():
+                code = ''
+                try:
+                    code = srs.GetAuthorityCode(None)
+                except Exception as e:
+                    str_error = 'GDAL Error: ' + e.args[0]
+                self.crs_id = ("{}:{}".format(authority, str(code)))
+                self.crs_epsg_code = code
+        self.geotransform = None
+        try:
+            self.geotransform = self.data_set.GetGeoTransform()
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+        if not self.geotransform:
+            str_error = ('Invalid geotransform in raster data source:\n{}'.format(file_path))
+            return str_error
         self.size_fc = abs(self.geotransform[1])
         self.size_sc = abs(self.geotransform[5])
         self.grid_size = abs(self.size_fc)
