@@ -267,6 +267,39 @@ class Raster:
         # coefs[1][1] = (data[r + 1][c + 1] + data[r][c]) - (data[r + 1][c] + data[r][c + 1])
         return str_error, coefs
 
+    def get_crs_id(self):
+        crs_id = self.crs_id
+        if self.crs_id_by_user:
+            crs_id = self.crs_id_by_user
+        return crs_id
+
+    def get_pixel_value(self, col, row, band_position):
+        str_error = ''
+        value = None
+        if not self.data_set:
+            str_error = ('Data set is not initialized')
+            return str_error, value
+        data = self.array_by_band[band_position]
+        if not band_position in self.raster_by_band:
+            str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
+            return str_error, value
+        if not band_position in self.array_by_band:
+            str_error = self.load(True,[band_position])
+            if str_error:
+                str_error = ('Loading band position: {}\nerror:\n{}'.format(str(band_position), str_error))
+                return str_error, value
+        if col == self.columns:
+            col = col - 1
+        if row == self.rows:
+            row = row - 1
+        if col < 0 or col > (self.columns - 1) or row < 0 or row > (self.rows - 1):
+            str_error = ('Pixel: [{}, {}]\nis out of raster DEM:\n{}'.format(str(col), str(row), self.file_path))
+            return str_error, value
+        if np.ma.is_masked(data[row, col]):
+           return str_error, value
+        value = data[row, col] * self.scale_by_band[band_position] + self.offset_by_band[band_position]
+        return str_error, value
+
     def interpolate(self,
                     coordinates,
                     crs_id,
