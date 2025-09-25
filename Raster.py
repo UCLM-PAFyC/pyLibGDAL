@@ -279,7 +279,6 @@ class Raster:
         if not self.data_set:
             str_error = ('Data set is not initialized')
             return str_error, value
-        data = self.array_by_band[band_position]
         if not band_position in self.raster_by_band:
             str_error = ('Position: {} is not in raster bands container'.format(str(band_position)))
             return str_error, value
@@ -288,6 +287,7 @@ class Raster:
             if str_error:
                 str_error = ('Loading band position: {}\nerror:\n{}'.format(str(band_position), str_error))
                 return str_error, value
+        data = self.array_by_band[band_position]
         if col == self.columns:
             col = col - 1
         if row == self.rows:
@@ -499,6 +499,8 @@ class Raster:
             if not self.array_by_band[i]:
                 try:
                     self.array_by_band[i] = self.raster_by_band[i].ReadAsMaskedArray()  # in original data type
+                    # value_0 = self.array_by_band[i][6328, 6475]
+                    # yo = 1
                 except Exception as e:
                     str_error = 'GDAL Error: ' + e.args[0]
                 if self.precision != -1:
@@ -532,11 +534,25 @@ class Raster:
                         if gdal_offset != 0:
                             self.array_by_band[i].__iadd__(gdal_offset)
                             # value_3 = self.array_by_band[i][1210, 1877]
+                    if not 'float' in array_type_name:
+                        self.array_by_band[i] = self.array_by_band[i].astype('float32', copy = False)
+                    if gdal_scale != 1:
+                        self.array_by_band[i].__imul__(gdal_scale)
+                        # value_2 = self.array_by_band[i][1210, 1877]
+                    if gdal_offset != 0:
+                        self.array_by_band[i].__iadd__(gdal_offset)
+                        # value_3 = self.array_by_band[i][1210, 1877]
                     self.array_by_band[i].__imul__(self.dbl_to_int)
+                    # # value_1 = self.array_by_band[i][6328, 6475]
+                    # yo = 1
                     # value_4 = self.array_by_band[i][1210, 1877]
                     self.array_by_band[i].__iadd__(-1.* min_value_as_integer)
+                    # value_2 = self.array_by_band[i][6328, 6475]
+                    # yo = 1
                     # value_5 = self.array_by_band[i][1210, 1877]
                     self.array_by_band[i] = self.array_by_band[i].astype(new_dtype, copy=False)
+                    # value_3 = self.array_by_band[i][6328, 6475]
+                    # yo = 1
                     # value_6 = self.array_by_band[i][1210, 1877]
                     self.scale_by_band[i] = self.int_to_dbl
                     self.offset_by_band[i] = min_value_as_integer * self.int_to_dbl
@@ -706,7 +722,7 @@ class Raster:
             # self.gdal_data_type_by_band[idx] = gdal.GetDataTypeName(band.DataType)
             self.array_by_band[i] = None
             self.no_data_value_by_band[i] = self.raster_by_band[i].GetNoDataValue()
-            min_value, max_value = self.raster_by_band[i].ComputeRasterMinMax(True)
+            min_value, max_value = self.raster_by_band[i].ComputeRasterMinMax(False)
             self.min_value_by_band[i] = min_value * self.gdal_scale_by_band[i] + self.gdal_offset_by_band[i]
             self.max_value_by_band[i] = max_value * self.gdal_scale_by_band[i] + self.gdal_offset_by_band[i]
         self.file_path = file_path
