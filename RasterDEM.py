@@ -92,22 +92,26 @@ class RasterDEM(Raster):
     def get_elevation(self, fc, sc):
         str_error = ''
         elevation = None
+        is_no_data = False
         point_out_edge = fc < self.sw_fc or fc > self.ne_fc or sc < self.sw_sc or sc > self.ne_sc
         if point_out_edge and self.check_domain:
             str_error = ('Point: [{}, {}]\nis out of raster DEM:\n{}'.format(str(fc), str(sc), self.file_path))
-            return str_error, elevation
+            is_out = True
+            return str_error, elevation, point_out_edge, is_no_data
         if not 0 in self.array_by_band:
             str_error = self.load()
             if str_error:
                 str_error = ('Loading in memory raster DEM from file: {}\nError:\n{}'
                              .format(self.file_path, str_error))
-                return str_error, elevation
+                return str_error, elevation, point_out_edge, is_no_data
         dbl_column = (fc - self.nw_fc) / self.size_fc
         dbl_row = (self.nw_sc - sc) / self.size_sc
         column = int(np.floor(dbl_column))
         row = int(np.floor(dbl_row))
         if point_out_edge:
-            return self.get_elevation_for_no_data_point(column, row)
+            is_no_data = True
+            str_error, elevation = self.get_elevation_for_no_data_point(column, row)
+            return str_error, elevation, point_out_edge, is_no_data
         if column == -1:
             column = 0
         if row == -1:
@@ -137,12 +141,15 @@ class RasterDEM(Raster):
         if value_lr is None:
             number_of_no_data_values = number_of_no_data_values + 1
         if number_of_no_data_values == 4:
-            return self.get_elevation_for_no_data_point(column, row)
+            is_no_data = True
+            str_error, elevation = self.get_elevation_for_no_data_point(column, row)
+            return str_error, elevation, point_out_edge, is_no_data
         values.append(value_ul)
         values.append(value_ur)
         values.append(value_ll)
         values.append(value_lr)
-        return self.bilinear_interpolation(inc_column, inc_row, values)
+        str_error, elevation = self.bilinear_interpolation(inc_column, inc_row, values)
+        return str_error, elevation, point_out_edge, is_no_data
 
     def get_elevation_for_no_data_point(self, col, row):
         str_error = ''
@@ -251,7 +258,8 @@ class RasterDEM(Raster):
     def get_vector_dem_intersection(self,
                                     source_crs_id,
                                     v_fp,
-                                    v_sp):
+                                    v_sp,
+                                    stop_at_first_hole = True):
         is_debugging = True
         str_error = ''
         pto_int = []
@@ -282,7 +290,7 @@ class RasterDEM(Raster):
             v_sp_tc = vector_raster_dem_crs_aux[1][2]
         if is_debugging:
             fp_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(v_fp_fc, v_fp_sc, v_fp_tc))
-        str_error, fp_elevation = self.get_elevation(v_fp_fc, v_fp_sc)
+        str_error, fp_elevation, point_out_edge, is_no_data = self.get_elevation(v_fp_fc, v_fp_sc)
         if str_error:
             str_error = ('Getting elevation for first point: [{}, {}]\nError:\n{}'.
                          format(str(v_fp_fc), str(v_fp_sc), str_error))
@@ -300,7 +308,7 @@ class RasterDEM(Raster):
             tc = fp_elevation
             pto_int = [fc, sc, tc]
             return str_error, pto_int
-        str_error, sp_elevation = self.get_elevation(v_sp_fc, v_sp_sc)
+        str_error, sp_elevation, point_out_edge, is_no_data = self.get_elevation(v_sp_fc, v_sp_sc)
         if str_error:
             str_error = ('Getting elevation for second point: [{}, {}]\nError:\n{}'.
                          format(str(v_fp_fc), str(v_fp_sc), str_error))
@@ -331,7 +339,7 @@ class RasterDEM(Raster):
                     tc = previous_elevation
                     break
             vp_tc = v_fp_tc + distance * v_slope
-            str_error, p_elevation = self.get_elevation(fc, sc)
+            str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
             if str_error:
                 str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
                              format(str(fc), str(sc), str_error))
@@ -347,6 +355,8 @@ class RasterDEM(Raster):
                 previousFc = fc
                 previousSc = sc
                 distance += self.grid_size
+            if is_no_data and stop_at_first_hole:
+                break
         if is_debugging:
             pto_int_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
         pto_int = [fc, sc, tc]
