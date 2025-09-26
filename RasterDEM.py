@@ -260,7 +260,7 @@ class RasterDEM(Raster):
                                     v_fp,
                                     v_sp,
                                     stop_at_first_hole = True):
-        is_debugging = False
+        is_debugging = True
         str_error = ''
         pto_int = []
         raster_dem_crs_id = self.get_crs_id()
@@ -348,6 +348,9 @@ class RasterDEM(Raster):
             str_error = ('Computing footprint to search line intersection for raster dsm: {}\nGDAL error:\n{}'
                          .format(self.file_path, e.args[0]))
             return str_error
+        if np.abs(v_sp_fc - 379912.356) < 0.01 and np.abs(v_sp_sc - 4064465.019) < 0.01:
+            yo = 1
+        line_intersection_geometry_type = line_intersection_geometry.GetGeometryType()
         if not line_intersection_geometry.IsValid():
             str_error = ('Footprint to search line intersection for raster dsm: {}\nis not valid'
                          .format(self.file_path))
@@ -355,19 +358,61 @@ class RasterDEM(Raster):
         if is_debugging:
             line_intersection_geometry_wkt = line_intersection_geometry.ExportToWkt()
         geoms_shorted_by_distance = {}
-        if line_intersection_geometry.GetGeometryCount() > 0:
-            geoms_by_distance = {}
-            for i in range(0, line_intersection_geometry.GetGeometryCount()):
-                g = line_intersection_geometry.GetGeometryRef(i)
-                geometries_distance_mm = int(first_point_geometry.Distance(g) * 1000.)
-                geoms_by_distance[geometries_distance_mm] = g
-            geoms_shorted_by_distance = dict(sorted(geoms_by_distance.items()))
-        else:
-            geoms_shorted_by_distance[0] = line_intersection_geometry
+        if not line_intersection_geometry.IsEmpty(): # line intersection is out of footprint
+            if line_intersection_geometry.GetGeometryCount() > 0:
+                geoms_by_distance = {}
+                for i in range(0, line_intersection_geometry.GetGeometryCount()):
+                    if not line_intersection_geometry.GetGeometryRef(i).IsValid():
+                        continue
+                    if line_intersection_geometry.GetGeometryRef(i).IsEmpty():
+                        continue
+                    g = line_intersection_geometry.GetGeometryRef(i)
+                    geometries_distance_mm = int(first_point_geometry.Distance(g) * 1000.)
+                    geoms_by_distance[geometries_distance_mm] = g
+                geoms_shorted_by_distance = dict(sorted(geoms_by_distance.items()))
+            else:
+                geoms_shorted_by_distance[0] = line_intersection_geometry
         fc = None
         sc = None
         tc = None
         vp_tc = None
+        if geoms_shorted_by_distance == {}: # empty
+            fc = search_line_geometry.GetPoint(0)[0]
+            sc = search_line_geometry.GetPoint(0)[1]
+            str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
+            if str_error:
+                str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
+                             format(str(fc), str(sc), str_error))
+                return str_error, pto_int
+            tc = p_elevation
+            if is_debugging:
+                ip_before_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
+            height_difference = v_fp_tc - p_elevation
+            distance_to_v_fp = np.abs(height_difference / v_slope)
+            fc = v_fp_fc + distance_to_v_fp * np.sin(azimuth)
+            sc = v_fp_sc + distance_to_v_fp * np.cos(azimuth)
+            pto_int = [fc, sc, tc]
+            if is_debugging:
+                ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
+            return str_error, pto_int
+            # fc = search_line_geometry.GetPoint(0)[0]
+            # sc = search_line_geometry.GetPoint(0)[1]
+            # distance_to_v_fp = np.sqrt((fc - v_fp_fc) ** 2. + (sc - v_fp_sc) ** 2.)
+            # vp_tc = v_fp_tc + distance_to_v_fp * v_slope
+            # str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
+            # if str_error:
+            #     str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
+            #                  format(str(fc), str(sc), str_error))
+            #     return str_error, pto_int
+            # tc = p_elevation
+            # height_difference = vp_tc - p_elevation
+            # dist_for_last_elevation = np.abs(height_difference / v_slope)
+            # fc = fc + dist_for_last_elevation * np.sin(azimuth)
+            # sc = sc + dist_for_last_elevation * np.cos(azimuth)
+            # pto_int = [fc, sc, tc]
+            # if is_debugging:
+            #     ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
+            # return str_error, pto_int
         height_difference = None
         find_solution = False
         for val_key in geoms_shorted_by_distance.keys():
@@ -377,11 +422,12 @@ class RasterDEM(Raster):
             line_lp_fc = line.GetPoint(line.GetPointCount() - 1)[0]
             line_lp_sc = line.GetPoint(line.GetPointCount() - 1)[1]
             max_distance = np.sqrt((line_lp_fc - line_fp_fc) ** 2 + (line_lp_sc - line_fp_sc) ** 2)
+            distance_to_v_fp = np.sqrt((line_fp_fc - v_fp_fc) ** 2. + (line_fp_sc - v_fp_sc) ** 2.)
             distance = 0
             while distance < max_distance:
                 fc = line_fp_fc + distance * np.sin(azimuth)
                 sc = line_fp_sc + distance * np.cos(azimuth)
-                distance_to_v_fp = np.sqrt((fc - v_fp_fc) ** 2. + (sc - v_fp_sc) ** 2.)
+                distance_to_v_fp += distance
                 vp_tc = v_fp_tc + distance_to_v_fp * v_slope
                 str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
                 if str_error:
@@ -397,6 +443,8 @@ class RasterDEM(Raster):
                     break
                 else:
                     distance += self.grid_size
+            if find_solution:
+                break
         if not find_solution:
             dist_for_last_elevation = np.abs(height_difference / v_slope)
             fc = fc + dist_for_last_elevation * np.sin(azimuth)
