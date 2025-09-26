@@ -260,7 +260,7 @@ class RasterDEM(Raster):
                                     v_fp,
                                     v_sp,
                                     stop_at_first_hole = True):
-        is_debugging = True
+        is_debugging = False
         str_error = ''
         pto_int = []
         raster_dem_crs_id = self.get_crs_id()
@@ -295,10 +295,14 @@ class RasterDEM(Raster):
             str_error = ('Getting elevation for first point: [{}, {}]\nError:\n{}'.
                          format(str(v_fp_fc), str(v_fp_sc), str_error))
             return str_error, pto_int
+        tolerance = self.grid_size / 2.0
+        height_difference_fp = v_fp_tc - fp_elevation
+        if np.abs(height_difference_fp) < tolerance or v_fp_tc < fp_elevation:
+            pto_int = [v_fp_fc, v_fp_sc, fp_elevation]
+            return str_error, pto_int
         azimuth = np.arctan2(v_sp_fc - v_fp_fc, v_sp_sc - v_fp_sc)
         if azimuth < 0.0:
             azimuth = azimuth + 2.0 * np.pi
-        tolerance = self.grid_size / 2.0
         v_distance_2d = np.sqrt((v_sp_fc - v_fp_fc) ** 2.0 + (v_sp_sc - v_fp_sc) ** 2.0)
         v_slope = (v_sp_tc - v_fp_tc) / v_distance_2d
         min_slope = (fp_elevation - v_fp_tc) / self.grid_size
@@ -315,48 +319,88 @@ class RasterDEM(Raster):
             return str_error, pto_int
         if is_debugging:
             sp_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(v_sp_fc, v_sp_sc, v_sp_tc))
-        previous_elevation = None
-        previous_fc = None
-        previous_sc = None
         distance = self.grid_size
         max_elevation = self.max_value_by_band[0]
+        search_line_geometry = None
         if v_fp_tc > max_elevation:
             # tan(vSlope)=(mMaxElevation-vFpTc)/distance
             distance = (max_elevation - v_fp_tc) / v_slope # ambos negativos
-        control = True
+        max_bounding_distance = np.sqrt( (self.columns * self.grid_size) ** 2. + (self.rows * self.grid_size) ** 2.)
+        line_first_point_fc = v_fp_fc + distance * np.sin(azimuth)
+        line_first_point_sc = v_fp_sc + distance * np.cos(azimuth)
+        first_point_geometry = ogr.Geometry(ogr.wkbPoint)
+        first_point_geometry.AddPoint(line_first_point_fc, line_first_point_sc)
+        line_last_point_fc = line_first_point_fc + max_bounding_distance * np.sin(azimuth)
+        line_last_point_sc = line_first_point_sc + max_bounding_distance * np.cos(azimuth)
+        search_line_geometry_wkt = "LINESTRING("
+        search_line_geometry_wkt += ("{:.9f} {:.9f}".format(line_first_point_fc, line_first_point_sc))
+        search_line_geometry_wkt += (",{:.9f} {:.9f})".format(line_last_point_fc, line_last_point_sc))
+        try:
+            search_line_geometry = ogr.CreateGeometryFromWkt(search_line_geometry_wkt)
+        except Exception as e:
+            str_error = ('Creating search line geometry for raster dsm: {}\nGDAL error:\n{}'
+                         .format(self.file_path, e.args[0]))
+            return str_error
+        line_intersection_geometry = None
+        try:
+            line_intersection_geometry = search_line_geometry.Intersection(self.footprint_geometry_by_band[0])
+        except Exception as e:
+            str_error = ('Computing footprint to search line intersection for raster dsm: {}\nGDAL error:\n{}'
+                         .format(self.file_path, e.args[0]))
+            return str_error
+        if not line_intersection_geometry.IsValid():
+            str_error = ('Footprint to search line intersection for raster dsm: {}\nis not valid'
+                         .format(self.file_path))
+            return str_error
+        if is_debugging:
+            line_intersection_geometry_wkt = line_intersection_geometry.ExportToWkt()
+        geoms_shorted_by_distance = {}
+        if line_intersection_geometry.GetGeometryCount() > 0:
+            geoms_by_distance = {}
+            for i in range(0, line_intersection_geometry.GetGeometryCount()):
+                g = line_intersection_geometry.GetGeometryRef(i)
+                geometries_distance_mm = int(first_point_geometry.Distance(g) * 1000.)
+                geoms_by_distance[geometries_distance_mm] = g
+            geoms_shorted_by_distance = dict(sorted(geoms_by_distance.items()))
+        else:
+            geoms_shorted_by_distance[0] = line_intersection_geometry
         fc = None
         sc = None
         tc = None
-        while control:
-            if distance > 106.46:
-                yo = 1
-            fc = v_fp_fc + distance * np.sin(azimuth)
-            sc = v_fp_sc + distance * np.cos(azimuth)
-            if fc < self.sw_fc or fc > self.ne_fc or sc < self.sw_sc or sc > self.ne_sc:
-                if previous_fc and previous_sc and previous_elevation:
-                    fc = previous_fc
-                    sc = previous_sc
-                    tc = previous_elevation
+        vp_tc = None
+        height_difference = None
+        find_solution = False
+        for val_key in geoms_shorted_by_distance.keys():
+            line = geoms_shorted_by_distance[val_key]
+            line_fp_fc = line.GetPoint(0)[0]
+            line_fp_sc = line.GetPoint(0)[1]
+            line_lp_fc = line.GetPoint(line.GetPointCount() - 1)[0]
+            line_lp_sc = line.GetPoint(line.GetPointCount() - 1)[1]
+            max_distance = np.sqrt((line_lp_fc - line_fp_fc) ** 2 + (line_lp_sc - line_fp_sc) ** 2)
+            distance = 0
+            while distance < max_distance:
+                fc = line_fp_fc + distance * np.sin(azimuth)
+                sc = line_fp_sc + distance * np.cos(azimuth)
+                distance_to_v_fp = np.sqrt((fc - v_fp_fc) ** 2. + (sc - v_fp_sc) ** 2.)
+                vp_tc = v_fp_tc + distance_to_v_fp * v_slope
+                str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
+                if str_error:
+                    str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
+                                 format(str(fc), str(sc), str_error))
+                    return str_error, pto_int
+                tc = p_elevation
+                height_difference = vp_tc - p_elevation
+                if is_debugging:
+                    ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
+                if np.abs(height_difference) < tolerance or vp_tc < p_elevation:
+                    find_solution = True
                     break
-            vp_tc = v_fp_tc + distance * v_slope
-            str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
-            if str_error:
-                str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
-                             format(str(fc), str(sc), str_error))
-                return str_error, pto_int
-            tc = p_elevation
-            height_difference = vp_tc - p_elevation
-            if is_debugging:
-                ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
-            if np.abs(height_difference) < tolerance or vp_tc < p_elevation:
-                break
-            else:
-                previous_elevation = p_elevation
-                previousFc = fc
-                previousSc = sc
-                distance += self.grid_size
-            if is_no_data and stop_at_first_hole:
-                break
+                else:
+                    distance += self.grid_size
+        if not find_solution:
+            dist_for_last_elevation = np.abs(height_difference / v_slope)
+            fc = fc + dist_for_last_elevation * np.sin(azimuth)
+            sc = sc + dist_for_last_elevation * np.cos(azimuth)
         if is_debugging:
             pto_int_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
         pto_int = [fc, sc, tc]
@@ -364,3 +408,43 @@ class RasterDEM(Raster):
 
     def set_check_domain(self, check_domain):
         self.check_domain = check_domain
+
+    def set_from_file(self,
+                      file_path):
+        str_error = ''
+        str_error = super().set_from_file(file_path)
+        if str_error:
+            return str_error
+        for nb in range(self.number_of_bands):
+            no_data_value = self.no_data_value_by_band[nb]
+            wkt = None
+            if no_data_value is None:
+                wkt = "POLYGON(("
+                wkt += ("{:.9f :.9f}".format(self.nw_fc, self.nw_sc))
+                wkt += (",{:.9f :.9f}".format(self.ne_fc, self.ne_sc))
+                wkt += (",{:.9f :.9f}".format(self.se_fc, self.se_sc))
+                wkt += (",{:.9f :.9f}".format(self.sw_fc, self.sw_sc))
+                wkt += (",{:.9f :.9f}".format(self.nw_fc, self.nw_sc))
+                wkt += "))"
+            else:
+                min_area = self.grid_size ** 2. * 4
+                try:
+                    bands_list = [nb + 1]
+                    wkt = gdal.Footprint(None,
+                                         self.data_set,
+                                         bands = bands_list,
+                                         maxPoints="unlimited",
+                                         minRingArea=min_area,
+                                         format="WKT")
+                except Exception as e:
+                    str_error = ('Computing footprint for raster dsm: {}\nGDAL error:\n{}'
+                                 .format(self.file_path, e.args[0]))
+                    return str_error
+            try:
+                footprint_geometry = ogr.CreateGeometryFromWkt(wkt)
+            except Exception as e:
+                str_error = ('Computing footprint for raster dsm: {}\nGDAL error:\n{}'
+                             .format(self.file_path, e.args[0]))
+                return str_error
+            self.footprint_geometry_by_band[nb] = footprint_geometry
+        return str_error

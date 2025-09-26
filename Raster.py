@@ -79,6 +79,7 @@ class Raster:
         self.raster_by_band = {}
         self.gdal_data_type_by_band = {}
         self.no_data_value_by_band = {}
+        self.footprint_geometry_by_band = {}
         self.array_by_band = {}
         self.file_path = None
         self.bicubic_coef_matrix = None
