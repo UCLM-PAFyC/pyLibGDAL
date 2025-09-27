@@ -260,7 +260,7 @@ class RasterDEM(Raster):
                                     v_fp,
                                     v_sp,
                                     stop_at_first_hole = True):
-        is_debugging = True
+        is_debugging = False
         str_error = ''
         pto_int = []
         raster_dem_crs_id = self.get_crs_id()
@@ -395,24 +395,6 @@ class RasterDEM(Raster):
             if is_debugging:
                 ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
             return str_error, pto_int
-            # fc = search_line_geometry.GetPoint(0)[0]
-            # sc = search_line_geometry.GetPoint(0)[1]
-            # distance_to_v_fp = np.sqrt((fc - v_fp_fc) ** 2. + (sc - v_fp_sc) ** 2.)
-            # vp_tc = v_fp_tc + distance_to_v_fp * v_slope
-            # str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
-            # if str_error:
-            #     str_error = ('Getting elevation for point: [{}, {}]\nError:\n{}'.
-            #                  format(str(fc), str(sc), str_error))
-            #     return str_error, pto_int
-            # tc = p_elevation
-            # height_difference = vp_tc - p_elevation
-            # dist_for_last_elevation = np.abs(height_difference / v_slope)
-            # fc = fc + dist_for_last_elevation * np.sin(azimuth)
-            # sc = sc + dist_for_last_elevation * np.cos(azimuth)
-            # pto_int = [fc, sc, tc]
-            # if is_debugging:
-            #     ip_wkt = ('POINT({:.3f} {:.3f} {:.3f})'.format(fc, sc, tc))
-            # return str_error, pto_int
         height_difference = None
         find_solution = False
         for val_key in geoms_shorted_by_distance.keys():
@@ -427,7 +409,6 @@ class RasterDEM(Raster):
             while distance < max_distance:
                 fc = line_fp_fc + distance * np.sin(azimuth)
                 sc = line_fp_sc + distance * np.cos(azimuth)
-                distance_to_v_fp += distance
                 vp_tc = v_fp_tc + distance_to_v_fp * v_slope
                 str_error, p_elevation, point_out_edge, is_no_data = self.get_elevation(fc, sc)
                 if str_error:
@@ -443,6 +424,7 @@ class RasterDEM(Raster):
                     break
                 else:
                     distance += self.grid_size
+                    distance_to_v_fp += self.grid_size
             if find_solution:
                 break
         if not find_solution:
