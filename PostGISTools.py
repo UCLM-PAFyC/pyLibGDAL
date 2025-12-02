@@ -41,17 +41,13 @@ class PostGISTools(object):
         postgis_geometry_type = None
         for layer_name in layers:
             geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG]
-            if not geometry_type in defs_crs.postgis_geometry_type_by_ogr_type:
+            if not geometry_type in defs_gdal.postgis_geometry_type_by_ogr_type:
                 str_error = ('Not exists postgis geometry type for GDAL geometry type: {}'.format(str(geometry_type)))
                 return str_error, sqls
-            postgis_geometry_type = defs_crs.postgis_geometry_type_by_ogr_type[geometry_type]
+            postgis_geometry_type = defs_gdal.postgis_geometry_type_by_ogr_type[geometry_type]
             crs_id = layers_crs_id[layer_name]
-            srs_id = crs_id.replace(defs_crs.EPSG_STRING_PREFIX,'')
-            if '+' in srs_id:
-                srs_id = srs_id.replace('+',' ')
-                values = srs_id.split(' ')
-                srs_id = values[0]
             crs = None
+            srs_id = None
             if crs_id:
                 crs = osr.SpatialReference()
                 try:
@@ -59,31 +55,30 @@ class PostGISTools(object):
                 except Exception as e:
                     str_error = 'GDAL Error: ' + e.args[0]
                     return str_error
+                srs_id = crs_id.replace(defs_crs.EPSG_STRING_PREFIX, ' ')
+                if '+' in srs_id:
+                    srs_id = srs_id.replace('+', ' ')
+                    srs_id = srs_id.strip()
+                    values = srs_id.split(' ')
+                    srs_id = values[0]
             sql = ''
             if db_schema is None:
-                sql = ('CREATE TABLE {} (\n'.format(layer_name))
+                sql = ('CREATE TABLE {} ('.format(layer_name))
             else:
-                sql = ('CREATE TABLE {}.{} (\n'.format(db_schema, layer_name))
-            sql += '\tgid INTEGER NOT NULL PRIMARY KEY,\n'
-            cont = 0
+                sql = ('CREATE TABLE {}.{} ('.format(db_schema, layer_name))
+            sql += 'gid INTEGER NOT NULL PRIMARY KEY'
             for field_name in layers[layer_name]:
                 if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
-                    cont = cont + 1
                     continue
                 field_type = layers[layer_name][field_name]
                 field_type = defs_gdal.postgis_type_by_ogr_type[field_type]
-                sql += ('\t{} {}'.format(field_name, field_type))
+                sql += (',{} {}'.format(field_name, field_type))
                 if layer_name in restrictions_in_fields_by_layer:
                     if field_name in restrictions_in_fields_by_layer[layer_name]:
                         for restriction in restrictions_in_fields_by_layer[layer_name][field_name]:
                             sql += (' {}'.format(restriction))
-                if cont < (len(layers[layer_name]) - 2 ):
-                    sql += ','
-                sql += '\n'
-                cont = cont + 1
             sql += ')'
             sqls.append(sql)
-            srs_id = ''
             if geometry_type != defs_gdal.geometry_type_by_name['none']:
                 # SELECT AddGeometryColumn('terrain_points', 'wkb_geometry', 3725, 'POINT', 3 );
                 if db_schema is None:
@@ -94,4 +89,5 @@ class PostGISTools(object):
                     sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',\'{}\',{},\'{}\',3)'
                            .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
                                    srs_id, postgis_geometry_type))
+                sqls.append(sql)
         return str_error, sqls
