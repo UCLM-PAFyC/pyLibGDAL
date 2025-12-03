@@ -66,6 +66,7 @@ class PostGISTools(object):
                 sql = ('CREATE TABLE {} ('.format(layer_name))
             else:
                 sql = ('CREATE TABLE {}.{} ('.format(db_schema, layer_name))
+            # sql += ('{} SERIAL PRIMARY KEY'.format(defs_gdal.POSTGIS_FIELD_FID_NAME))#INTEGER NOT NULL PRIMARY KEY'
             sql += 'gid INTEGER NOT NULL PRIMARY KEY'
             for field_name in layers[layer_name]:
                 if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
@@ -89,5 +90,110 @@ class PostGISTools(object):
                     sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',\'{}\',{},\'{}\',3)'
                            .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
                                    srs_id, postgis_geometry_type))
+                sqls.append(sql)
+        return str_error, sqls
+
+    @classmethod
+    def get_sql_write_features(self,
+                               features_by_layer,
+                               db_schema = None):
+        str_error = ''
+        sqls = []
+        if not db_schema is None:
+            if not isinstance(db_schema, str):
+                str_error = ('db_schema must be a string')
+                return str_error, sqls
+        if not isinstance(features_by_layer, dict):
+            str_error = ('Features by layer argument must be a dictionary of lists')
+            return str_error, sqls
+        for layer_name in features_by_layer:
+            if not isinstance(features_by_layer[layer_name], list):
+                str_error = ('Features by layer argument must be a dictionary of lists')
+                return str_error, sqls
+        for layer_name in features_by_layer:
+            for i in range(len(features_by_layer[layer_name])):
+                if not isinstance(features_by_layer[layer_name][i], list):
+                    str_error = ('In layer: {}, feature: {} is not a list'.format(layer_name, str(i + 1)))
+                    return str_error, sqls
+                feature_fields = features_by_layer[layer_name][i]
+                find_geometry_field = False
+                # feature = ogr.Feature(layer.GetLayerDefn())  # instantiate OGRFeature
+                sql = 'INSERT INTO '
+                if not db_schema is None:
+                    sql += (db_schema + '.')
+                sql += (layer_name + '(')
+                inserted_fields = 0
+                for field_pos in range(len(feature_fields)):
+                    field = feature_fields[field_pos]
+                    if not isinstance(field, dict):
+                        str_error = ('In layer: {}, feature: {}, field: {} is not a dictionary'
+                                     .format(layer_name, str(i + 1), str(field_pos)))
+                        return str_error, sqls
+                    if not defs_gdal.FIELD_NAME_TAG in field:
+                        str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(field_pos), defs_gdal.FIELD_NAME_TAG))
+                        return str_error, sqls
+                    field_name = field[defs_gdal.FIELD_NAME_TAG]
+                    if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                        find_geometry_field = True
+                        wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
+                        if wkb_geometry == defs_gdal.geometry_type_by_name['none']:
+                            continue
+                    if inserted_fields > 0:
+                        sql += ','
+                    sql += field_name
+                    inserted_fields = inserted_fields + 1
+                sql += ') VALUES('
+                if not find_geometry_field:
+                    str_error = ('In layer: {}, feature: {}, not contains geometry field'
+                                 .format(layer_name, str(i + 1)))
+                    return str_error, sqls
+                inserted_fields = 0
+                for field_pos in range(len(feature_fields)):
+                    field = feature_fields[field_pos]
+                    field_name = field[defs_gdal.FIELD_NAME_TAG]
+                    str_field_value = ''
+                    if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                        wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
+                        if wkb_geometry != defs_gdal.geometry_type_by_name['none']:
+                            geometry = None
+                            try:
+                                geometry = ogr.CreateGeometryFromWkb(wkb_geometry)
+                            except Exception as e:
+                                str_error = 'GDAL Error: ' + e.args[0]
+                                return str_error, sqls
+                            try:
+                                str_field_value = geometry.ExportToWkt()
+                                # ST_GeomFromText('LINESTRING(27.69858 85.28154, 27.69804 85.28155, 27.69337 85.28174, 27.69356 85.28275, 27.69378 85.28370, 27.69409 85.28449)', 900913)
+                                # feature.SetGeometry(geometry)
+                                # # feature_geometry = feature.GetGeometryRef()
+                                # # feature_wkt = feature_geometry.ExportToWkt()
+                                # # yo = 1
+                            except Exception as e:
+                                str_error = 'GDAL Error: ' + e.args[0]
+                                return str_error, sqls
+                        else:
+                            continue
+                    else:
+                        if not defs_gdal.FIELD_TYPE_TAG in field:
+                            str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(field_pos), defs_gdal.FIELD_NAME_TAG))
+                            return str_error, sqls
+                        if not defs_gdal.FIELD_VALUE_TAG in field:
+                            str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(field_pos), defs_gdal.FIELD_VALUE_TAG))
+                            return str_error, sqls
+                        field_type = field[defs_gdal.FIELD_TYPE_TAG]
+                        field_value = field[defs_gdal.FIELD_VALUE_TAG]
+                        if defs_gdal.name_by_type[field_type] == 'string':
+                            str_field_value = ('\'{}\''.format(field_value))
+                        else:
+                            str_field_value = str(field_value)
+                    # add to sql
+                    if inserted_fields > 0:
+                        sql += ','
+                    sql += str_field_value
+                    inserted_fields = inserted_fields + 1
+                sql += ')'
                 sqls.append(sql)
         return str_error, sqls
