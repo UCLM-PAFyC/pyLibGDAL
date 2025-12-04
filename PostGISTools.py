@@ -66,8 +66,8 @@ class PostGISTools(object):
                 sql = ('CREATE TABLE {} ('.format(layer_name))
             else:
                 sql = ('CREATE TABLE {}.{} ('.format(db_schema, layer_name))
-            # sql += ('{} SERIAL PRIMARY KEY'.format(defs_gdal.POSTGIS_FIELD_FID_NAME))#INTEGER NOT NULL PRIMARY KEY'
-            sql += 'gid INTEGER NOT NULL PRIMARY KEY'
+            sql += ('{} BIGSERIAL PRIMARY KEY'.format(defs_gdal.POSTGIS_FIELD_FID_NAME))#INTEGER NOT NULL PRIMARY KEY'
+            # sql += 'gid INTEGER NOT NULL PRIMARY KEY'
             for field_name in layers[layer_name]:
                 if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
                     continue
@@ -91,6 +91,59 @@ class PostGISTools(object):
                            .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
                                    srs_id, postgis_geometry_type))
                 sqls.append(sql)
+        return str_error, sqls
+
+    @classmethod
+    def get_sql_get_features(self,
+                             layer_name,
+                             fields,
+                             filter_fields_or_string= None,
+                             db_schema = None):
+        str_error = ''
+        sqls = []
+        if not db_schema is None:
+            if not isinstance(db_schema, str):
+                str_error = ('db_schema must be a string')
+                return str_error, sqls
+        if not isinstance(layer_name, str):
+            str_error = ('layer_name must be a string')
+            return str_error, sqls
+        if not isinstance(fields, dict):
+            str_error = ('Fields argument must be a dictionary: \'field name\': \'field type\'')
+            return str_error, features
+        if filter_fields_or_string:
+            if not isinstance(filter_fields_or_string, str):
+                if not isinstance(filter_fields_or_string, dict):
+                    str_error = ('Filter fields argument must be a dictionary: \'field name\': \'field type\'')
+                    return str_error, features
+        sql = 'SELECT '
+        number_of_inserted_fields = 0
+        for field_name in fields:
+            field_type = fields[field_name]
+            if number_of_inserted_fields > 0:
+                sql += ','
+            sql += field_name
+            number_of_inserted_fields += 1
+        if db_schema is None:
+            sql += ' FROM {} '.format(layer_name)
+        else:
+            sql += ' FROM {}.{} '.format(db_schema, layer_name)
+        if not filter_fields_or_string is None:
+            sql += ' WHERE '
+            number_of_inserted_fields = 0
+            for filter_field_name in filter_fields_or_string:
+                filter_field_value = filter_fields_or_string[filter_field_name]
+                if number_of_inserted_fields > 0:
+                    sql += ','
+                sql += filter_field_name
+                sql += ' = '
+                if isinstance(filter_field_value, str):
+                    sql += ('\'{}\''.format(filter_field_value))
+                else:
+                    sql += str(filter_field_value)
+                number_of_inserted_fields += 1
+        # sql += ';'
+        sqls.append(sql)
         return str_error, sqls
 
     @classmethod
