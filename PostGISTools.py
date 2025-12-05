@@ -83,11 +83,11 @@ class PostGISTools(object):
             if geometry_type != defs_gdal.geometry_type_by_name['none']:
                 # SELECT AddGeometryColumn('terrain_points', 'wkb_geometry', 3725, 'POINT', 3 );
                 if db_schema is None:
-                    sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',{},\'{}\',3)'
+                    sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',{},\'{}\',2)'
                            .format(layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
                                    srs_id, postgis_geometry_type))
                 else:
-                    sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',\'{}\',{},\'{}\',3)'
+                    sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',\'{}\',{},\'{}\',2)'
                            .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
                                    srs_id, postgis_geometry_type))
                 sqls.append(sql)
