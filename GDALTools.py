@@ -506,27 +506,58 @@ class GDALTools(object):
         return str_error, geometry_type
 
     @classmethod
-    def get_layers_names(self, file_path):
+    def get_layers_names(self,
+                         file_path = None,
+                         wfs = None):#[wfs_url, wfs_user, wfs_password],
         str_error = ''
-        if not isinstance(file_path, str):
-            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
-            return str_error
+        layer_names = []
         if not self.is_initialized:
             str_error = self.initialize()
             if str_error:
-                return str_error
-        str_error, is_vector = self.is_vector(file_path)
-        if str_error:
-            return str_error
-        if not is_vector:
-            str_error = ('File is not a vector data source:\n{}'.format(file_path))
-            return str_error
-        layer_names = []
-        if not os.path.exists(file_path):
-            str_error = ('Not exists file:\n{}'.format(file_path))
+                return str_error, layer_names
+        source = None
+        if not file_path is None:
+            if not isinstance(file_path, str):
+                str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+                return str_error, layer_names
+            str_error, is_vector = self.is_vector(file_path)
+            if str_error:
+                return str_error, layer_names
+            if not is_vector:
+                str_error = ('File is not a vector data source:\n{}'.format(file_path))
+                return str_error, layer_names
+            if not os.path.exists(file_path):
+                str_error = ('Not exists file:\n{}'.format(file_path))
+                return str_error, layer_names
+            source = file_path
+        elif wfs is not None:
+            if not isinstance(wfs, list):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            if not len(wfs) == 3:
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            wfs_url = wfs[0]
+            wfs_user = wfs[1]
+            wfs_password = wfs[2]
+            if not isinstance(wfs_url, str) or not isinstance(wfs_user, str) or not isinstance(wfs_password, str):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            str_user_password = ('{}:{}'.format(wfs_user, wfs_password))
+            try:
+                gdal.SetConfigOption('OGR_WFS_PAGING_ALLOWED', 'ON')
+                gdal.SetConfigOption('OGR_WFS_PAGE_SIZE', '250')
+                gdal.SetConfigOption('GDAL_HTTP_AUTH', 'BASIC')  # =[BASIC/NTLM/GSSNEGOTIATE/ANY]
+                gdal.SetConfigOption('GDAL_HTTP_USERPWD', str_user_password)
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+                return str_error, layer_names
+            source = wfs_url
+        if source is None:
+            str_error = ('source is none')
             return str_error, layer_names
         try:
-            layer_names = [l.GetName() for l in ogr.Open(file_path)]
+            layer_names = [l.GetName() for l in ogr.Open(source)]
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
         return str_error, layer_names
