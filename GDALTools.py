@@ -220,36 +220,69 @@ class GDALTools(object):
                      file_path,
                      layer_name,
                      fields,
-                     filter_fields_or_string= None):
+                     filter_fields_or_string= None,
+                     wfs = None): #[wfs_url, wfs_user, wfs_password]
         str_error = ''
-        if not isinstance(file_path, str):
-            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
-            return str_error
+        features = []
         if not self.is_initialized:
             str_error = self.initialize()
             if str_error:
-                return str_error
-        str_error, is_vector = self.is_vector(file_path)
-        if str_error:
-            return str_error
-        if not is_vector:
-            str_error = ('File is not a vector data source:\n{}'.format(file_path))
-            return str_error
-        features = []
-        if not os.path.exists(file_path):
-            str_error = ('Not exists file:\n{}'.format(file_path))
-            return str_error, features
+                return str_error, features
         if not isinstance(fields, dict):
             str_error = ('Fields argument must be a dictionary: \'field name\': \'field type\'')
+            return str_error, features
+        if not isinstance(layer_name, str):
+            str_error = ('layer_name must be a string')
             return str_error, features
         if filter_fields_or_string:
             if not isinstance(filter_fields_or_string, str):
                 if not isinstance(filter_fields_or_string, dict):
                     str_error = ('Filter fields argument must be a dictionary: \'field name\': \'field type\'')
                     return str_error, features
+        source = None
+        if not file_path is None:
+            if not isinstance(file_path, str):
+                str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+                return str_error, features
+            str_error, is_vector = self.is_vector(file_path)
+            if str_error:
+                return str_error, features
+            if not is_vector:
+                str_error = ('File is not a vector data source:\n{}'.format(file_path))
+                return str_error, features
+            if not os.path.exists(file_path):
+                str_error = ('Not exists file:\n{}'.format(file_path))
+                return str_error, features
+            source = file_path
+        elif wfs is not None:
+            if not isinstance(wfs, list):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            if not len(wfs) == 3:
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            wfs_url = wfs[0]
+            wfs_user = wfs[1]
+            wfs_password = wfs[2]
+            if not isinstance(wfs_url, str) or not isinstance(wfs_user, str) or not isinstance(wfs_password, str):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error, layer_names
+            str_user_password = ('{}:{}'.format(wfs_user, wfs_password))
+            try:
+                gdal.SetConfigOption('OGR_WFS_PAGING_ALLOWED', 'ON')
+                gdal.SetConfigOption('OGR_WFS_PAGE_SIZE', '250')
+                gdal.SetConfigOption('GDAL_HTTP_AUTH', 'BASIC')  # =[BASIC/NTLM/GSSNEGOTIATE/ANY]
+                gdal.SetConfigOption('GDAL_HTTP_USERPWD', str_user_password)
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+                return str_error, layer_names
+            source = wfs_url
+        if source is None:
+            str_error = ('source is none')
+            return str_error, layer_names
         ds = None
         try:
-            ds = ogr.Open(file_path)
+            ds = ogr.Open(source)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error, features
@@ -264,7 +297,7 @@ class GDALTools(object):
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error, features
         if not layer:
-            str_error = ('Not exists layer: {}\nin file:\n{}'.format(layer_name, file_path))
+            str_error = ('Not exists layer: {}\nin source:\n{}'.format(layer_name, source))
             return str_error, features
         try:
             layer_defn = layer.GetLayerDefn()
@@ -277,9 +310,10 @@ class GDALTools(object):
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error, features
+        field_position_by_field_name_in_layer = {}
         for i in range(layer_defn.GetFieldCount()):
             field_name_in_layer = layer_defn.GetFieldDefn(i).GetName()
-            yo = 1
+            field_position_by_field_name_in_layer[field_name_in_layer] = i
         layer_geom_name = layer_geom_name.lower()
         layer_geom2d_name = layer_geom_name
         if ('3d') in layer_geom2d_name:
@@ -305,22 +339,23 @@ class GDALTools(object):
                     field_geom2d_name = field_geom2d_name.strip()
                     # if field_geom2d_type != layer_geom2d_type:
                     #     if ('3d').casefold() in layer_geom_name:
-                    if field_geom2d_name != layer_geom2d_name:
-                        str_error = ('In file:\n{}\nin layer: {}\ngeometry type is: {}\ndifferent for selected: {}'.
-                                     format(file_path, layer_name, ogr.GeometryTypeToName(layer_geom_type),
+                    # if field_geom2d_name != layer_geom2d_name:
+                    if not field_geom2d_name in layer_geom2d_name: # provisional polygon != curve polygon
+                        str_error = ('In source:\n{}\nin layer: {}\ngeometry type is: {}\ndifferent for selected: {}'.
+                                     format(source, layer_name, ogr.GeometryTypeToName(layer_geom_type),
                                             ogr.GeometryTypeToName(field_type)))
                         return str_error, features
                 continue
             field_idx = layer.GetLayerDefn().GetFieldIndex(field_name)
             if field_idx == -1:
-                str_error = ('No field: {} in layer: {}\nin file: {}'.
-                             format(field_name, layer_name, file_path))
+                str_error = ('No field: {} in layer: {}\nin source:\n{}'.
+                             format(field_name, layer_name, source))
                 return str_error, features
             field_defn = layer.GetLayerDefn().GetFieldDefn(field_idx)
             field_defn_type = field_defn.GetType()
             if field_defn_type != field_type:
-                str_error = ('Different type in field: {} in value: {} in layer: {}\nin file:\n{}'.
-                             format(field_name, str(i + 1), layer_name, file_path))
+                str_error = ('Different type in field: {} in value: {} in layer: {}\nin source:\n{}'.
+                             format(field_name, str(i + 1), layer_name, source))
                 return str_error, features
         if filter_fields_or_string:
             filter_str = ''
@@ -338,8 +373,8 @@ class GDALTools(object):
                         continue
                     filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
                     if filter_field_idx == -1:
-                        str_error = ('No field: {} in layer: {}\nin file: {}'.
-                                     format(filter_field_name, layer_name, file_path))
+                        str_error = ('No field: {} in layer: {}\nin source: {}'.
+                                     format(filter_field_name, layer_name, source))
                         return str_error, features
                     filter_field_defn = layer.GetLayerDefn().GetFieldDefn(filter_field_idx)
                     filter_field_defn_type = filter_field_defn.GetType()
@@ -508,7 +543,7 @@ class GDALTools(object):
     @classmethod
     def get_layers_names(self,
                          file_path = None,
-                         wfs = None):#[wfs_url, wfs_user, wfs_password],
+                         wfs = None):#[wfs_url, wfs_user, wfs_password]
         str_error = ''
         layer_names = []
         if not self.is_initialized:
