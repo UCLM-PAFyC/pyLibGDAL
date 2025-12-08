@@ -733,25 +733,10 @@ class GDALTools(object):
     @classmethod
     def remove_features(self,
                         file_path,
-                        features_filter_fields_by_layer):
+                        features_filter_fields_by_layer,
+                       wfs = None):
         # if there are several features for filter all of them will be uptated
         str_error = ''
-        if not isinstance(file_path, str):
-            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
-            return str_error
-        if not self.is_initialized:
-            str_error = self.initialize()
-            if str_error:
-                return str_error
-        str_error, is_vector = self.is_vector(file_path)
-        if str_error:
-            return str_error
-        if not is_vector:
-            str_error = ('File is not a vector data source:\n{}'.format(file_path))
-            return str_error
-        if not os.path.exists(file_path):
-            str_error = ('Not exists file:\n{}'.format(file_path))
-            return str_error
         if not isinstance(features_filter_fields_by_layer, dict):
             str_error = ('Features filters by layer argument must be a dictionary of lists')
             return str_error
@@ -759,9 +744,58 @@ class GDALTools(object):
             if not isinstance(features_filter_fields_by_layer[layer_name], list):
                 str_error = ('Features filters by layer argument must be a dictionary of lists')
                 return str_error
+        if not self.is_initialized:
+            str_error = self.initialize()
+            if str_error:
+                return str_error
+        source = None
+        if not file_path is None:
+            if not isinstance(file_path, str):
+                str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+                return str_error
+            str_error, is_vector = self.is_vector(file_path)
+            if str_error:
+                return str_error
+            if not is_vector:
+                str_error = ('File is not a vector data source:\n{}'.format(file_path))
+                return str_error
+            if not os.path.exists(file_path):
+                str_error = ('Not exists file:\n{}'.format(file_path))
+                return str_error
+            source = file_path
+        elif wfs is not None:
+            if not isinstance(wfs, list):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            if not len(wfs) == 3:
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            wfs_url = wfs[0]
+            if not '?' in wfs_url:
+                str_error = ('Not ? in wfs url:\n{}'.format(wfs_url))
+                return str_error
+            wfs_user = wfs[1]
+            wfs_password = wfs[2]
+            if not isinstance(wfs_url, str) or not isinstance(wfs_user, str) or not isinstance(wfs_password, str):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            str_user_password = ('{}:{}'.format(wfs_user, wfs_password))
+            try:
+                gdal.SetConfigOption('OGR_WFS_PAGING_ALLOWED', 'ON')
+                gdal.SetConfigOption('OGR_WFS_PAGE_SIZE', '250')
+                gdal.SetConfigOption('GDAL_HTTP_AUTH', 'BASIC')  # =[BASIC/NTLM/GSSNEGOTIATE/ANY]
+                gdal.SetConfigOption('GDAL_HTTP_USERPWD', str_user_password)
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+                return str_error
+            wfs_url_parts = wfs_url.split('?')
+            source = ("WFS:{}?service=WFS&{}".format(wfs_url_parts[0], defs_gdal.WFS_WRITE_VERSION))  # Or 2.0.0
+        if source is None:
+            str_error = ('source is none')
+            return str_error
         ds = None
         try:
-            ds = ogr.Open(file_path, update = 1)
+            ds = ogr.Open(source, update = 1)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error
@@ -773,7 +807,7 @@ class GDALTools(object):
                 str_error = 'GDAL Error: ' + e.args[0]
                 return str_error
             if not layer:
-                str_error = ('Not exists layer: {}\nin file:\n{}'.format(layer_name, file_path))
+                str_error = ('Not exists layer: {}\nin source:\n{}'.format(layer_name, source))
                 return str_error
             for i in range(len(features_filter_fields_by_layer[layer_name])):
                 feature_filter_fields = features_filter_fields_by_layer[layer_name][i]
@@ -795,8 +829,8 @@ class GDALTools(object):
                         continue
                     filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
                     if filter_field_idx == -1:
-                        str_error = ('No filter field: {} in layer: {}\nin file: {}'.
-                                     format(filter_field_name, layer_name, file_path))
+                        str_error = ('No filter field: {} in layer: {}\nin source: {}'.
+                                     format(filter_field_name, layer_name, source))
                         return str_error
                     if not defs_gdal.FIELD_TYPE_TAG in filter_field:
                         str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
@@ -810,8 +844,8 @@ class GDALTools(object):
                     filter_field_defn = layer.GetLayerDefn().GetFieldDefn(filter_field_idx)
                     filter_field_defn_type = filter_field_defn.GetType()
                     if filter_field_defn_type != filter_field_type:
-                        str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin file:\n{}'.
-                                     format(filter_field_name, str(i + 1), layer_name, file_path))
+                        str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin source:\n{}'.
+                                     format(filter_field_name, str(i + 1), layer_name, source))
                         return str_error
                     filter_field_value = filter_field[defs_gdal.FIELD_VALUE_TAG]
                     if cont_filter_field > 0:
@@ -847,25 +881,10 @@ class GDALTools(object):
     def update_features(self,
                         file_path,
                         features_by_layer,
-                        features_filter_fields_by_layer):
+                        features_filter_fields_by_layer,
+                        wfs = None):
         # if there are several features for filter all of them will be uptated
         str_error = ''
-        if not isinstance(file_path, str):
-            str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
-            return str_error
-        if not self.is_initialized:
-            str_error = self.initialize()
-            if str_error:
-                return str_error
-        str_error, is_vector = self.is_vector(file_path)
-        if str_error:
-            return str_error
-        if not is_vector:
-            str_error = ('File is not a vector data source:\n{}'.format(file_path))
-            return str_error
-        if not os.path.exists(file_path):
-            str_error = ('Not exists file:\n{}'.format(file_path))
-            return str_error
         if not isinstance(features_by_layer, dict):
             str_error = ('Features by layer argument must be a dictionary of lists')
             return str_error
@@ -880,9 +899,57 @@ class GDALTools(object):
             if not isinstance(features_filter_fields_by_layer[layer_name], list):
                 str_error = ('Features filters by layer argument must be a dictionary of lists')
                 return str_error
+        if not self.is_initialized:
+            str_error = self.initialize()
+            if str_error:
+                return str_error
+        source = None
+        if not file_path is None:
+            if not isinstance(file_path, str):
+                str_error = ('File path must be a string and is a: {}'.format(str(type(file_path))))
+                return str_error
+            str_error, is_vector = self.is_vector(file_path)
+            if str_error:
+                return str_error
+            if not is_vector:
+                str_error = ('File is not a vector data source:\n{}'.format(file_path))
+                return str_error
+            if not os.path.exists(file_path):
+                str_error = ('Not exists file:\n{}'.format(file_path))
+                return str_error
+        elif wfs is not None:
+            if not isinstance(wfs, list):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            if not len(wfs) == 3:
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            wfs_url = wfs[0]
+            if not '?' in wfs_url:
+                str_error = ('Not ? in wfs url:\n{}'.format(wfs_url))
+                return str_error
+            wfs_user = wfs[1]
+            wfs_password = wfs[2]
+            if not isinstance(wfs_url, str) or not isinstance(wfs_user, str) or not isinstance(wfs_password, str):
+                str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
+                return str_error
+            str_user_password = ('{}:{}'.format(wfs_user, wfs_password))
+            try:
+                gdal.SetConfigOption('OGR_WFS_PAGING_ALLOWED', 'ON')
+                gdal.SetConfigOption('OGR_WFS_PAGE_SIZE', '250')
+                gdal.SetConfigOption('GDAL_HTTP_AUTH', 'BASIC')  # =[BASIC/NTLM/GSSNEGOTIATE/ANY]
+                gdal.SetConfigOption('GDAL_HTTP_USERPWD', str_user_password)
+            except Exception as e:
+                str_error = 'GDAL Error: ' + e.args[0]
+                return str_error
+            wfs_url_parts = wfs_url.split('?')
+            source = ("WFS:{}?service=WFS&{}".format(wfs_url_parts[0], defs_gdal.WFS_WRITE_VERSION))  # Or 2.0.0
+        if source is None:
+            str_error = ('source is none')
+            return str_error
         ds = None
         try:
-            ds = ogr.Open(file_path, update = 1)
+            ds = ogr.Open(source, update = 1)
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
             return str_error
@@ -900,7 +967,7 @@ class GDALTools(object):
                 str_error = 'GDAL Error: ' + e.args[0]
                 return str_error
             if not layer:
-                str_error = ('Not exists layer: {}\nin file:\n{}'.format(layer_name, file_path))
+                str_error = ('Not exists layer: {}\nin source:\n{}'.format(layer_name, source))
                 return str_error
             for i in range(len(features_by_layer[layer_name])):
                 if not isinstance(features_by_layer[layer_name][i], list):
@@ -927,8 +994,8 @@ class GDALTools(object):
                     if filter_field_name.casefold() != defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
                         filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
                         if filter_field_idx == -1:
-                            str_error = ('No filter field: {} in layer: {}\nin file: {}'.
-                                         format(filter_field_name, layer_name, file_path))
+                            str_error = ('No filter field: {} in layer: {}\nin source: {}'.
+                                         format(filter_field_name, layer_name, source))
                             return str_error
                         if not defs_gdal.FIELD_TYPE_TAG in filter_field:
                             str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
@@ -942,8 +1009,8 @@ class GDALTools(object):
                         filter_field_defn = layer.GetLayerDefn().GetFieldDefn(filter_field_idx)
                         filter_field_defn_type = filter_field_defn.GetType()
                         if filter_field_defn_type != filter_field_type:
-                            str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin file:\n{}'.
-                                         format(filter_field_name, str(i + 1), layer_name, file_path))
+                            str_error = ('Different type in filter field: {} in value: {} in layer: {}\nin source:\n{}'.
+                                         format(filter_field_name, str(i + 1), layer_name, source))
                             return str_error
                     else:
                         filter_field_defn_type = defs_gdal.LAYERS_FIELD_FID_FIELD_TYPE
@@ -966,7 +1033,13 @@ class GDALTools(object):
                 layer.ResetReading()
                 cont_feature = 0
                 number_of_features = layer.GetFeatureCount() # must be one if only one feature for filters
+                cont = 0
                 for feature in layer:
+                    # wfs continue iterating
+                    cont = cont + 1
+                    if cont > number_of_features:
+                        break
+                    # wfs continue iterating
                     feature_fields = features_by_layer[layer_name][i]
                     find_geometry_field = False
                     for field_pos in range(len(feature_fields)):
@@ -998,8 +1071,8 @@ class GDALTools(object):
                             continue
                         field_idx = layer.GetLayerDefn().GetFieldIndex(field_name)
                         if field_idx == -1:
-                            str_error = ('No field: {} in layer: {}\nin file: {}'.
-                                         format(field_name, layer_name, file_path))
+                            str_error = ('No field: {} in layer: {}\nin source: {}'.
+                                         format(field_name, layer_name, source))
                             return str_error
                         if not defs_gdal.FIELD_TYPE_TAG in field:
                             str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
@@ -1028,12 +1101,13 @@ class GDALTools(object):
                     #     return str_error
                     try:
                         if layer.SetFeature(feature) != ogr.OGRERR_NONE:
-                            str_error = ('Error updating feature: {}\nin layer: {}\nin file:\n{}'.
-                                         format(str(i+1), layer_name, file_path))
+                            str_error = ('Error updating feature: {}\nin layer: {}\nin source:\n{}'.
+                                         format(str(i+1), layer_name, source))
                             return str_error
                     except Exception as e:
                         str_error = 'GDAL Error: ' + e.args[0]
                         return str_error
+            ds.FlushCache()
         return str_error
 
     @classmethod
@@ -1076,6 +1150,9 @@ class GDALTools(object):
                 str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
                 return str_error
             wfs_url = wfs[0]
+            if not '?' in wfs_url:
+                str_error = ('Not ? in wfs url:\n{}'.format(wfs_url))
+                return str_error
             wfs_user = wfs[1]
             wfs_password = wfs[2]
             if not isinstance(wfs_url, str) or not isinstance(wfs_user, str) or not isinstance(wfs_password, str):
@@ -1090,7 +1167,8 @@ class GDALTools(object):
             except Exception as e:
                 str_error = 'GDAL Error: ' + e.args[0]
                 return str_error
-            source = ('WFS:{}'.format(wfs_url))
+            wfs_url_parts = wfs_url.split('?')
+            source = ("WFS:{}?service=WFS&{}".format(wfs_url_parts[0], defs_gdal.WFS_WRITE_VERSION))  # Or 2.0.0
         if source is None:
             str_error = ('source is none')
             return str_error
@@ -1186,4 +1264,5 @@ class GDALTools(object):
                 except Exception as e:
                     str_error = 'GDAL Error: ' + e.args[0]
                     return str_error
+            ds.FlushCache()
         return str_error
