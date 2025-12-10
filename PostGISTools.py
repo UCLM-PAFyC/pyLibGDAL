@@ -28,11 +28,11 @@ class PostGISTools(object):
             if not isinstance(layers[layer_name], dict):
                 str_error = ('Fields argument must be a dictionary of dictionary: \'layer name\': \'fields\'')
                 return str_error, sqls
-            if not defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]:
+            if not defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG in layers[layer_name]:
                 str_error = ('All layers must has a geometry field, type none for no geometry')
                 return str_error, sqls
             # if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_type_by_name:
-            if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_name_by_type:
+            if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG] in defs_gdal.geometry_name_by_type:
                 str_error = ('All layers must has a valid geometry field, type none for no geometry')
                 return str_error, sqls
             if not layer_name in layers_crs_id:
@@ -40,7 +40,7 @@ class PostGISTools(object):
                 return str_error, sqls
         postgis_geometry_type = None
         for layer_name in layers:
-            geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG]
+            geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG]
             if not geometry_type in defs_gdal.postgis_geometry_type_by_ogr_type:
                 str_error = ('Not exists postgis geometry type for GDAL geometry type: {}'.format(str(geometry_type)))
                 return str_error, sqls
@@ -69,7 +69,7 @@ class PostGISTools(object):
             sql += ('{} BIGSERIAL PRIMARY KEY'.format(defs_gdal.POSTGIS_FIELD_FID_NAME))#INTEGER NOT NULL PRIMARY KEY'
             # sql += 'gid INTEGER NOT NULL PRIMARY KEY'
             for field_name in layers[layer_name]:
-                if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                if field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG:
                     continue
                 field_type = layers[layer_name][field_name]
                 field_type = defs_gdal.postgis_type_by_ogr_type[field_type]
@@ -84,11 +84,11 @@ class PostGISTools(object):
                 # SELECT AddGeometryColumn('terrain_points', 'wkb_geometry', 3725, 'POINT', 3 );
                 if db_schema is None:
                     sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',{},\'{}\',2)'
-                           .format(layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
+                           .format(layer_name, defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG,
                                    srs_id, postgis_geometry_type))
                 else:
                     sql = ('SELECT AddGeometryColumn(\'{}\',\'{}\',\'{}\',{},\'{}\',2)'
-                           .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_TAG,
+                           .format(db_schema,layer_name, defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG,
                                    srs_id, postgis_geometry_type))
                 sqls.append(sql)
         return str_error, sqls
@@ -187,7 +187,7 @@ class PostGISTools(object):
                                      .format(layer_name, str(i + 1), str(field_pos), defs_gdal.FIELD_NAME_TAG))
                         return str_error, sqls
                     field_name = field[defs_gdal.FIELD_NAME_TAG]
-                    if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG:
                         find_geometry_field = True
                         wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
                         if wkb_geometry == defs_gdal.geometry_type_by_name['none']:
@@ -206,7 +206,7 @@ class PostGISTools(object):
                     field = feature_fields[field_pos]
                     field_name = field[defs_gdal.FIELD_NAME_TAG]
                     str_field_value = ''
-                    if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG:
                         wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
                         if wkb_geometry != defs_gdal.geometry_type_by_name['none']:
                             geometry = None
