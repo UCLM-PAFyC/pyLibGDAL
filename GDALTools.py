@@ -63,11 +63,13 @@ class GDALTools(object):
             if not isinstance(layers[layer_name], dict):
                 str_error = ('Fields argument must be a dictionary of dictionary: \'layer name\': \'fields\'')
                 return str_error
-            if not defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]:
+            if (not defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]
+                    or not defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG in layers[layer_name]):
                 str_error = ('All layers must has a geometry field, type none for no geometry')
                 return str_error
             # if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_type_by_name:
-            if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_name_by_type:
+            if (not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_name_by_type
+                    or not  layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG] in defs_gdal.geometry_name_by_type):
                 str_error = ('All layers must has a valid geometry field, type none for no geometry')
                 return str_error
             if not layer_name in layers_crs_id:
@@ -112,7 +114,10 @@ class GDALTools(object):
                     # to do, remove_features?
                     yo = 1
             outLayer = None
-            geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG]
+            if defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]:
+                geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG]
+            else:
+                geometry_type = layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG]
             crs_id = layers_crs_id[layer_name]
             crs = None
             if crs_id:
@@ -131,7 +136,7 @@ class GDALTools(object):
                 str_error = 'GDAL Error: ' + e.args[0]
                 return str_error
             for field_name in layers[layer_name]:
-                if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                if field_name == defs_gdal.LAYERS_GEOMETRY_TAG or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG:
                     continue
                 field_type = layers[layer_name][field_name]
                 field = None
@@ -328,7 +333,7 @@ class GDALTools(object):
             if field_name.casefold() == defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
                 continue
             field_type = fields[field_name]
-            if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+            if field_name == defs_gdal.LAYERS_GEOMETRY_TAG or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG:
                 if field_type != layer_geom_type:
                     # field_geom2d_type = ogr.wkbFlatten(field_type)
                     field_geom_name = ogr.GeometryTypeToName(field_type)
@@ -363,7 +368,8 @@ class GDALTools(object):
                 cont_filter_field = 0
                 for filter_field_name in filter_fields_or_string:
                     filter_field_value = filter_fields_or_string[filter_field_name]
-                    if filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if (filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or filter_field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                         # to do
                         # if field_type != layer.GetGeomType():
                         #     str_error = ('In file:\n{}\nin layer: {}\ngeometry type is: {}\ndifferent for selected: {}'.
@@ -403,7 +409,8 @@ class GDALTools(object):
                     feature_fields[field_name] = fid_value
                     continue
                 field_type = fields[field_name]
-                if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                        or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                     if field_type != defs_gdal.geometry_type_by_name['none']:
                         feature_geometry_wkb = None
                         try:
@@ -824,7 +831,8 @@ class GDALTools(object):
                                      .format(layer_name, str(i + 1), str(filter_field_pos), defs_gdal.FIELD_NAME_TAG))
                         return str_error
                     filter_field_name = filter_field[defs_gdal.FIELD_NAME_TAG]
-                    if filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if (filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or filter_field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                         # to do
                         continue
                     filter_field_idx = layer.GetLayerDefn().GetFieldIndex(filter_field_name)
@@ -987,7 +995,8 @@ class GDALTools(object):
                                      .format(layer_name, str(i + 1), str(filter_field_pos), defs_gdal.FIELD_NAME_TAG))
                         return str_error
                     filter_field_name = filter_field[defs_gdal.FIELD_NAME_TAG]
-                    if filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if (filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or filter_field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                         # to do
                         continue
                     filter_field_defn_type = None
@@ -1053,7 +1062,8 @@ class GDALTools(object):
                                          .format(layer_name, str(i + 1), str(field_pos + 1), defs_gdal.FIELD_NAME_TAG))
                             return str_error
                         field_name = field[defs_gdal.FIELD_NAME_TAG]
-                        if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                        if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                                or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                             find_geometry_field = True
                             wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
                             if wkb_geometry != defs_gdal.geometry_type_by_name['none']:
@@ -1206,7 +1216,8 @@ class GDALTools(object):
                                      .format(layer_name, str(i + 1), str(field_pos), defs_gdal.FIELD_NAME_TAG))
                         return str_error
                     field_name = field[defs_gdal.FIELD_NAME_TAG]
-                    if field_name == defs_gdal.LAYERS_GEOMETRY_TAG:
+                    if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
                         find_geometry_field = True
                         wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
                         if wkb_geometry != defs_gdal.geometry_type_by_name['none']:
