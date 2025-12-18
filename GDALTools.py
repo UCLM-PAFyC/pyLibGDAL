@@ -163,7 +163,7 @@ class GDALTools(object):
         return str_error, exists_layer
 
     @classmethod
-    def gdalinfo_as_json(self, file_path): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
+    def gdalinfo_as_json(self, file_path, layer_name = None): # https://gdal.org/en/stable/programs/gdal_cli_from_python.html, 3.11
         str_error = ''
         info_as_json = ''
         if not isinstance(file_path, str):
@@ -182,6 +182,10 @@ class GDALTools(object):
             if str_error:
                 return str_error, info_as_json
         command = ("gdalinfo -json \"{}\"".format(file_path))
+        if layer_name is not None:
+            str_error, driver_name = self.get_driver_name_from_file(file_path)
+            driver_name = driver_name[0]
+            command = ("gdalinfo -json {}:\"{}\":{}".format(driver_name, file_path, layer_name))
         try:
             res = subprocess.Popen(command,
                                    universal_newlines=True,
@@ -446,6 +450,44 @@ class GDALTools(object):
         return str_error, features
 
     @classmethod
+    def get_raster_layers_names(self,
+                                file_path):#[wfs_url, wfs_user, wfs_password]
+        str_error = ''
+        layer_names = []
+        if not self.is_initialized:
+            str_error = self.initialize()
+            if str_error:
+                return str_error, layer_names
+        source = file_path
+        if source is None:
+            str_error = ('source is none')
+            return str_error, layer_names
+        if not isinstance(source, str):
+            str_error = ('File path must be a string and is a: {}'.format(str(type(source))))
+            return str_error, layer_names
+        source = source.lower()
+        if not source.endswith(defs_gdal.GEOPACKAGE_FILE_EXTENSION):
+            str_error = ('Option only for GPKG files')
+            return str_error, layer_names
+        # try:
+        #     layer_names = [l.GetName() for l in ogr.Open(source)]
+        # except Exception as e:
+        #     str_error = 'GDAL Error: ' + e.args[0]
+        #     return str_error, layer_names
+        try:
+            ds = gdal.OpenEx(source)
+            layer = ds.ExecuteSQL(defs_gdal.GEOPACKAGE_GET_LAYERS_SQL)
+            for feature in layer:
+                layer_name = feature.GetField(defs_gdal.GEOPACKAGE_GET_LAYERS_LAYER_NAME_POSITION)
+                layer_type = feature.GetField(defs_gdal.GEOPACKAGE_GET_LAYERS_LAYER_TYPE_POSITION)
+                layer_type = layer_type.lower()
+                if layer_type in defs_gdal.GEOPACKAGE_GET_LAYERS_LAYER_TYPE_RASTER:
+                    layer_names.append(layer_name)
+        except Exception as e:
+            str_error = 'GDAL Error: ' + e.args[0]
+        return str_error, layer_names
+
+    @classmethod
     def is_raster(self, file_path):
         str_error = ''
         is_raster = None
@@ -602,6 +644,7 @@ class GDALTools(object):
             layer_names = [l.GetName() for l in ogr.Open(source)]
         except Exception as e:
             str_error = 'GDAL Error: ' + e.args[0]
+            return str_error, layer_names
         return str_error, layer_names
 
     @classmethod
