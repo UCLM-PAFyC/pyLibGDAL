@@ -94,6 +94,73 @@ class PostGISTools(object):
         return str_error, sqls
 
     @classmethod
+    def get_sql_delete_features(self,
+                                features_filter_fields_by_layer= None,
+                                db_schema = None):
+        str_error = ''
+        sqls = []
+        if not db_schema is None:
+            if not isinstance(db_schema, str):
+                str_error = ('db_schema must be a string')
+                return str_error, sqls
+        if not isinstance(features_filter_fields_by_layer, dict):
+            str_error = ('Features filters by layer argument must be a dictionary of lists')
+            return str_error
+        for layer_name in features_filter_fields_by_layer:
+            if not isinstance(features_filter_fields_by_layer[layer_name], list):
+                str_error = ('Features filters by layer argument must be a dictionary of lists')
+                return str_error
+        for layer_name in features_filter_fields_by_layer:
+            for i in range(len(features_filter_fields_by_layer[layer_name])):
+                feature_filter_fields = features_filter_fields_by_layer[layer_name][i]
+                cont_filter_field = 0
+                sql = ''
+                if db_schema is None:
+                    sql = ('DELETE FROM {} WHERE '.format(layer_name))
+                else:
+                    sql = ('DELETE FROM {}.{} WHERE '.format(db_schema, layer_name))
+                filter_str = ""
+                for filter_field_pos in range(len(feature_filter_fields)):
+                    filter_field = feature_filter_fields[filter_field_pos]
+                    if not isinstance(filter_field, dict):
+                        str_error = ('In layer: {}, feature filter: {}, field: {} is not a dictionary'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1)))
+                        return str_error
+                    if not defs_gdal.FIELD_NAME_TAG in filter_field:
+                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos), defs_gdal.FIELD_NAME_TAG))
+                        return str_error
+                    filter_field_name = filter_field[defs_gdal.FIELD_NAME_TAG]
+                    if (filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or filter_field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
+                        # to do
+                        continue
+                    if not defs_gdal.FIELD_TYPE_TAG in filter_field:
+                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_NAME_TAG))
+                        return str_error
+                    if not defs_gdal.FIELD_VALUE_TAG in filter_field:
+                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_VALUE_TAG))
+                        return str_error
+                    filter_field_type = filter_field[defs_gdal.FIELD_TYPE_TAG]
+                    filter_field_value = filter_field[defs_gdal.FIELD_VALUE_TAG]
+                    if cont_filter_field > 0:
+                        filter_str += ' AND '
+                    filter_str += filter_field_name
+                    filter_str += ' = '
+                    if defs_gdal.name_by_type[filter_field_type] == 'string':
+                        filter_str += '\''
+                    filter_str += str(filter_field_value)
+                    if defs_gdal.name_by_type[filter_field_type] == 'string':
+                        filter_str += '\''
+                    cont_filter_field = cont_filter_field + 1
+                sql += filter_str
+                # sql += ';'
+                sqls.append(sql)
+        return str_error, sqls
+
+    @classmethod
     def get_sql_get_features(self,
                              layer_name,
                              fields,
