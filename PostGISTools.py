@@ -187,6 +187,15 @@ class PostGISTools(object):
         number_of_inserted_fields = 0
         for field_name in fields:
             field_type = fields[field_name]
+            if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                    or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
+                if field_type == defs_gdal.geometry_type_by_name['none']:
+                    continue
+            # if ignore_geometry:
+            #     if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+            #             or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
+            #         if field_type == defs_gdal.geometry_type_by_name['none']:
+            #             continue
             if number_of_inserted_fields > 0:
                 sql += ','
             sql += field_name
@@ -211,6 +220,151 @@ class PostGISTools(object):
                 number_of_inserted_fields += 1
         # sql += ';'
         sqls.append(sql)
+        return str_error, sqls
+
+    @classmethod
+    def get_sql_update_features(self,
+                                features_by_layer,
+                                features_filter_fields_by_layer,
+                                db_schema = None):
+        str_error = ''
+        sqls = []
+        if not db_schema is None:
+            if not isinstance(db_schema, str):
+                str_error = ('db_schema must be a string')
+                return str_error, sqls
+        if not isinstance(features_by_layer, dict):
+            str_error = ('Features by layer argument must be a dictionary of lists')
+            return str_error, sqls
+        for layer_name in features_by_layer:
+            if not isinstance(features_by_layer[layer_name], list):
+                str_error = ('Features by layer argument must be a dictionary of lists')
+                return str_error, sqls
+        if not isinstance(features_filter_fields_by_layer, dict):
+            str_error = ('Features filters by layer argument must be a dictionary of lists')
+            return str_error, sqls
+        for layer_name in features_filter_fields_by_layer:
+            if not isinstance(features_filter_fields_by_layer[layer_name], list):
+                str_error = ('Features filters by layer argument must be a dictionary of lists')
+                return str_error, sqls
+        for layer_name in features_by_layer:
+            if not layer_name in features_filter_fields_by_layer:
+                str_error = ('There are no features filters for layer: {}'.format(layer_name))
+                return str_error, sqls
+            if len(features_by_layer[layer_name]) != len(features_filter_fields_by_layer[layer_name]):
+                str_error = ('Different number of features in filters for layer: {}\n'.format(layer_name))
+                return str_error, sqls
+            for i in range(len(features_by_layer[layer_name])):
+                if not isinstance(features_by_layer[layer_name][i], list):
+                    str_error = ('In layer: {}, feature: {} is not a list'.format(layer_name, str(i+1)))
+                    return str_error, sqls
+                feature_filter_fields = features_filter_fields_by_layer[layer_name][i]
+                cont_filter_field = 0
+                sql = ''
+                if db_schema is None:
+                    sql = ('UPDATE {} SET '.format(layer_name))
+                else:
+                    sql = ('UPDATE {}.{} SET '.format(db_schema, layer_name))
+                filter_str = ""
+                for filter_field_pos in range(len(feature_filter_fields)):
+                    filter_field = feature_filter_fields[filter_field_pos]
+                    if not isinstance(filter_field, dict):
+                        str_error = ('In layer: {}, feature filter: {}, field: {} is not a dictionary'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos + 1)))
+                        return str_error, sqls
+                    if not defs_gdal.FIELD_NAME_TAG in filter_field:
+                        str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(filter_field_pos), defs_gdal.FIELD_NAME_TAG))
+                        return str_error, sqls
+                    filter_field_name = filter_field[defs_gdal.FIELD_NAME_TAG]
+                    if (filter_field_name == defs_gdal.LAYERS_GEOMETRY_TAG
+                            or filter_field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
+                        # to do
+                        continue
+                    filter_field_type = None
+                    if filter_field_name.casefold() != defs_gdal.LAYERS_FIELD_FID_FIELD_NAME.casefold():
+                        if not defs_gdal.FIELD_TYPE_TAG in filter_field:
+                            str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_NAME_TAG))
+                            return str_error, sqls
+                        if not defs_gdal.FIELD_VALUE_TAG in filter_field:
+                            str_error = ('In layer: {}, feature: {}, filter field: {} not contains: {}'
+                                         .format(layer_name, str(i + 1), str(filter_field_pos + 1), defs_gdal.FIELD_VALUE_TAG))
+                            return str_error, sqls
+                        filter_field_type = filter_field[defs_gdal.FIELD_TYPE_TAG]
+                    else:
+                        filter_field_type = defs_gdal.LAYERS_FIELD_FID_FIELD_TYPE
+                    filter_field_value = filter_field[defs_gdal.FIELD_VALUE_TAG]
+                    if cont_filter_field > 0:
+                        filter_str += ' AND '
+                    filter_str += filter_field_name
+                    filter_str += ' = '
+                    if defs_gdal.name_by_type[filter_field_type] == 'string':
+                        filter_str += '\''
+                    filter_str += str(filter_field_value)
+                    if defs_gdal.name_by_type[filter_field_type] == 'string':
+                        filter_str += '\''
+                    cont_filter_field = cont_filter_field + 1
+                feature_fields = features_by_layer[layer_name][i]
+                find_geometry_field = False
+                cont_value_field = 0
+                for field_pos in range(len(feature_fields)):
+                    field = feature_fields[field_pos]
+                    if not isinstance(field, dict):
+                        str_error = ('In layer: {}, feature: {}, field: {} is not a dictionary'
+                                     .format(layer_name, str(i + 1), str(field_pos + 1)))
+                        return str_error
+                    if not defs_gdal.FIELD_NAME_TAG in field:
+                        str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(field_pos + 1), defs_gdal.FIELD_NAME_TAG))
+                        return str_error
+                    field_name = field[defs_gdal.FIELD_NAME_TAG]
+                    if not defs_gdal.FIELD_TYPE_TAG in field:
+                        str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(field_pos + 1), defs_gdal.FIELD_NAME_TAG))
+                        return str_error, sqls
+                    field_type = field[defs_gdal.FIELD_TYPE_TAG]
+                    if not defs_gdal.FIELD_VALUE_TAG in field:
+                        str_error = ('In layer: {}, feature: {}, field: {} not contains: {}'
+                                     .format(layer_name, str(i + 1), str(field_pos + 1), defs_gdal.FIELD_VALUE_TAG))
+                        return str_error, sqls
+                    str_field_value = ''
+                    if (field_name == defs_gdal.LAYERS_GEOMETRY_TAG 
+                            or field_name == defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG):
+                        wkb_geometry = field[defs_gdal.FIELD_VALUE_TAG]
+                        if wkb_geometry != defs_gdal.geometry_type_by_name['none']:
+                            geometry = None
+                            try:
+                                geometry = ogr.CreateGeometryFromWkb(wkb_geometry)
+                            except Exception as e:
+                                str_error = 'GDAL Error: ' + e.args[0]
+                                return str_error, sqls
+                            try:
+                                str_field_value = geometry.ExportToWkt()
+                                # ST_GeomFromText('LINESTRING(27.69858 85.28154, 27.69804 85.28155, 27.69337 85.28174, 27.69356 85.28275, 27.69378 85.28370, 27.69409 85.28449)', 900913)
+                                # feature.SetGeometry(geometry)
+                                # # feature_geometry = feature.GetGeometryRef()
+                                # # feature_wkt = feature_geometry.ExportToWkt()
+                                # # yo = 1
+                            except Exception as e:
+                                str_error = 'GDAL Error: ' + e.args[0]
+                                return str_error, sqls
+                        else:
+                            continue
+                    else:
+                        field_value = field[defs_gdal.FIELD_VALUE_TAG]
+                        if defs_gdal.name_by_type[field_type] == 'string':
+                            str_field_value = ('\'{}\''.format(field_value))
+                        else:
+                            str_field_value = str(field_value)
+                    if cont_value_field > 0:
+                        sql += ', '
+                    sql += field_name
+                    sql += ' = '
+                    sql += str_field_value
+                    cont_value_field = cont_value_field + 1
+                sql += ' WHERE ' + filter_str
+                sqls.append(sql)
         return str_error, sqls
 
     @classmethod
