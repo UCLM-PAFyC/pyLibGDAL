@@ -362,10 +362,10 @@ class GDALTools(object):
                 return str_error, features
             field_defn = layer.GetLayerDefn().GetFieldDefn(field_idx)
             field_defn_type = field_defn.GetType()
-            if field_defn_type != field_type:
-                str_error = ('Different type in field: {} in value: {} in layer: {}\nin source:\n{}'.
-                             format(field_name, str(i + 1), layer_name, source))
-                return str_error, features
+            # if field_defn_type != field_type:
+            #     str_error = ('Different type in field: {} in value: {} in layer: {}\nin source:\n{}'.
+            #                  format(field_name, str(i + 1), layer_name, source))
+            #     return str_error, features
         if filter_fields_or_string:
             filter_str = ''
             if not isinstance(filter_fields_or_string, str):
