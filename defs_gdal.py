@@ -48,11 +48,14 @@ type_by_name['string'] = ogr.OFTString
 name_by_type[ogr.OFTString] = 'string'
 type_by_name['int'] = ogr.OFTInteger
 name_by_type[ogr.OFTInteger] = 'int'
+type_by_name['int64'] = ogr.OFTInteger64
+name_by_type[ogr.OFTInteger64] = 'int64'
 type_by_name['real'] = ogr.OFTReal
 name_by_type[ogr.OFTReal] = 'real'
 postgis_type_by_ogr_type = {}
 postgis_type_by_ogr_type[ogr.OFTString] = 'text'
 postgis_type_by_ogr_type[ogr.OFTInteger] = 'integer'
+postgis_type_by_ogr_type[ogr.OFTInteger64] = 'integer' # bigint?
 postgis_type_by_ogr_type[ogr.OFTReal] = 'real'
 
 postgis_geometry_type_by_ogr_type = {}

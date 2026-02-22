@@ -64,14 +64,17 @@ class GDALTools(object):
                 str_error = ('Fields argument must be a dictionary of dictionary: \'layer name\': \'fields\'')
                 return str_error
             if (not defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]
-                    or not defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG in layers[layer_name]):
+                    and not defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG in layers[layer_name]):
                 str_error = ('All layers must has a geometry field, type none for no geometry')
                 return str_error
-            # if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_type_by_name:
-            if (not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_name_by_type
-                    or not  layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG] in defs_gdal.geometry_name_by_type):
-                str_error = ('All layers must has a valid geometry field, type none for no geometry')
-                return str_error
+            if defs_gdal.LAYERS_GEOMETRY_TAG in layers[layer_name]:
+                if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_TAG] in defs_gdal.geometry_name_by_type:
+                    str_error = ('All layers must has a valid geometry field, type none for no geometry')
+                    return str_error
+            else:
+                if not layers[layer_name][defs_gdal.LAYERS_GEOMETRY_POSTGIS_TAG] in defs_gdal.geometry_name_by_type:
+                    str_error = ('All layers must has a valid geometry field, type none for no geometry')
+                    return str_error
             if not layer_name in layers_crs_id:
                 str_error = ('All layers must has a CRS Id, in layers CRS id argument')
                 return str_error
@@ -968,6 +971,7 @@ class GDALTools(object):
             if not os.path.exists(file_path):
                 str_error = ('Not exists file:\n{}'.format(file_path))
                 return str_error
+            source = file_path
         elif wfs is not None:
             if not isinstance(wfs, list):
                 str_error = ('wfs must be a list = [wfs_url, wfs_user, wfs_password]')
