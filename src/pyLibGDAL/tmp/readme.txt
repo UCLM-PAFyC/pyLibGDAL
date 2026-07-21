@@ -1,0 +1,1 @@
+ogrinfo wfstest.xml --debug on

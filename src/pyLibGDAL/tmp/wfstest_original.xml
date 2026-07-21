@@ -1,0 +1,6 @@
+<OGRWFSDataSource>
+<URL>http://163.172.31.229:8081/geoserver/ows?service=WFS?</URL>
+<UserPwd>user_project_126:uxw0b9HMaQ487YC9</UserPwd> 
+<HttpAuth>BASIC</HttpAuth> 
+<Version>1.0.0</Version> 
+</OGRWFSDataSource>
