@@ -2,23 +2,12 @@
 # David Hernandez Lopez, david.hernandez@uclm.es
 
 import os, sys
-from osgeo import gdal, osr, ogr
-import json
+from osgeo import gdal, ogr
 import numpy as np
 # import numpy.ma as ma
-import psutil
-import math
-from statistics import mode
 
-import subprocess
-
-current_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(os.path.join(current_path, '..'))
-
-from . import defs_gdal
 from pyLibCRSs import CRSsDefines as defs_crs
 from pyLibCRSs.CRSsTools import CRSsTools
-from .GDALTools import GDALTools
 from .Raster import Raster
 
 gdal.UseExceptions()

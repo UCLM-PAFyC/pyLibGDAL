@@ -4,9 +4,6 @@
 import os, sys
 from osgeo import gdal, osr, ogr
 
-current_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(os.path.join(current_path, '..'))
-
 from pyLibGDAL import defs_gdal
 from pyLibCRSs import CRSsDefines as defs_crs
 from pyLibCRSs.CRSsTools import CRSsTools
