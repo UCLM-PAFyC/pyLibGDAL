@@ -8,7 +8,7 @@ import math
 from pyLibCRSs.CRSsTools import CRSsTools
 from pyLibCRSs import CRSsDefines as cd
 
-from pyLibGDAL.Raster import Raster
+from . import Raster
 
 class Geoid:
     def __init__(self,

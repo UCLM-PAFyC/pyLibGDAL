@@ -6,7 +6,7 @@ from osgeo import gdal, osr, ogr
 
 import subprocess
 
-from src.pyLibGDAL import defs_gdal
+from pyLibGDAL import defs_gdal
 from pyLibCRSs import CRSsDefines as defs_crs
 from pyLibCRSs.CRSsTools import CRSsTools
 

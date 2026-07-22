@@ -4,7 +4,7 @@
 import os, sys
 from osgeo import gdal, osr, ogr
 
-from pyLibGDAL import defs_gdal
+from . import defs_gdal
 from pyLibCRSs import CRSsDefines as defs_crs
 from pyLibCRSs.CRSsTools import CRSsTools
 
