@@ -4,4 +4,5 @@ __all__ = [
     "PostGISTools",
     "Raster",
     "RasterDEM",
+    "Geoid",
 ]
