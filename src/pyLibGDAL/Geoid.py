@@ -1,11 +1,9 @@
 # authors:
 # David Hernandez Lopez, david.hernandez@uclm.es
 
-import os
-import sys
 import math
 
-from pyLibCRSs.CRSsTools import CRSsTools
+from pyLibCRSs import CRSsTools
 from pyLibCRSs import CRSsDefines as cd
 
 from . import Raster

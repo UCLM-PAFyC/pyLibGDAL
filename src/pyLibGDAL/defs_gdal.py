@@ -1,7 +1,7 @@
 # authors:
 # David Hernandez Lopez, david.hernandez@uclm.es
 
-from osgeo import ogr, gdal
+from osgeo import ogr
 
 WFS_WRITE_VERSION = 'VERSION=1.1.0'
 
