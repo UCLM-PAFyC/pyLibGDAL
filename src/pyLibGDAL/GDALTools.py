@@ -180,11 +180,19 @@ class GDALTools(object):
             str_error = self.initialize()
             if str_error:
                 return str_error, info_as_json
-        command = ("gdalinfo -json \"{}\"".format(file_path))
+        command = [
+            "gdalinfo",
+            "-json",
+            file_path,
+        ]
         if layer_name is not None:
             str_error, driver_name = self.get_driver_name_from_file(file_path)
             driver_name = driver_name[0]
-            command = ("gdalinfo -json {}:\"{}\":{}".format(driver_name, file_path, layer_name))
+            command = [
+                "gdalinfo",
+                "-json",
+                f"{driver_name}:{file_path}:{layer_name}",
+            ]
         try:
             res = subprocess.Popen(command,
                                    universal_newlines=True,
@@ -756,9 +764,20 @@ class GDALTools(object):
             str_error = self.initialize()
             if str_error:
                 return str_error, info_as_json
-        command = ("ogrinfo -so -json \"{}\"".format(file_path))
+        command = [
+            "ogrinfo",
+            "-so",
+            "-json",
+            file_path
+        ]
         if layer_name:
-            command = ("ogrinfo -so -json \"{}\" \"{}\"".format(file_path, layer_name))
+            command = [
+                "ogrinfo",
+                "-so",
+                "-json",
+                file_path,
+                layer_name
+            ]
         try:
             res = subprocess.Popen(command,
                                    universal_newlines=True,
