@@ -72,6 +72,7 @@ class Raster:
         self.array_by_band = {}
         self.file_path = None
         self.bicubic_coef_matrix = None
+        self.is_loaded = False
 
     def bicubic_coefs(self, r, c, band_position): # https://en.wikipedia.org/wiki/Bicubic_interpolation
         str_error = ''
@@ -473,6 +474,8 @@ class Raster:
         if not self.data_set:
             str_error = ('Data set is not initialized')
             return str_error
+        if self.is_loaded:
+            return str_error
         if bands:
             if not isinstance(bands, list):
                 str_error = ('Argument bands must be a list and is a: {}'.format(str(type(bands))))
@@ -563,6 +566,7 @@ class Raster:
                 #     self.array_by_band[i] = self.raster_by_band[i].ReadAsMaskedArray()  # in original data type
                 # except Exception as e:
                 #     str_error = 'GDAL Error: ' + e.args[0]
+        self.is_loaded = True
         return str_error
 
     def set_crs_id_by_user(self,
